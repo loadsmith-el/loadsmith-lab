@@ -31,7 +31,7 @@ loadsmith-lab v0.1.0   local loadsmith
 
 ▶ postgres-to-jsonl
   "Read 100k rows from PostgreSQL and write to JSONL"
-  image loadsmith-lab/images/postgres-15:local already in cache
+  image loadsmith-lab/images/lab-postgres-15:local already in cache
   waiting for postgres at 172.18.0.2:5432...
   postgres ready
 

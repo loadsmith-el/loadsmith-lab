@@ -12,7 +12,7 @@ In `case.yaml`, each service is declared with an `alias`:
 
 ```yaml
 services:
-  - image: images/postgres-15
+  - image: images/lab-postgres-15
     alias: pg
 ```
 

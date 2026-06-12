@@ -6,7 +6,7 @@ What's shipped and what's queued next. Shipped items are documented in
 ## Shipped
 
 - [x] Lab harness — runner, docker wrapper, CLI, report crates
-- [x] `postgres-15` service image with baked-in canonical seed data
+- [x] `lab-postgres-15` service image with baked-in canonical seed data
 - [x] Smoke case `postgres-to-jsonl` (content + type round-trip validation)
 - [x] Volume/throughput cases `postgres-to-null-{5M,15M}`
 - [x] Smoke case `postgres-to-parquet-chunked` (compression + file-splitting validation)
@@ -20,6 +20,6 @@ What's shipped and what's queued next. Shipped items are documented in
 
 ## Planned
 
-- [ ] **More service images** — only `postgres-15` exists today; additional
+- [ ] **More service images** — only `lab-postgres-15` exists today; additional
       source services would extend lab coverage beyond the postgres source
       plugin.

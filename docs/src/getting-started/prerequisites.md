@@ -17,8 +17,8 @@ repos:
 projects/
   loadsmith/                ← the main repo
   loadsmith-lab/            ← this repo (the engine, sibling directory)
-  loadsmith-lab-catalog/    ← cases + bundles (the "catalog" origin)
-  loadsmith-lab-images/     ← service images (the "images" origin)
+  loadsmith-lab-canonical-catalog/    ← cases + bundles (the "catalog" origin)
+  loadsmith-lab-canonical-images/     ← service images (the "images" origin)
 ```
 
 `--loadsmith <path>` / `--plugin <path>` take any path; the sibling layout above
@@ -51,8 +51,8 @@ docker info
 **4. Register the content repos as local origins (read live, no install):**
 
 ```bash
-./target/debug/loadsmith-lab origin local add catalog ../loadsmith-lab-catalog
-./target/debug/loadsmith-lab origin local add images  ../loadsmith-lab-images
+./target/debug/loadsmith-lab origin local add catalog ../loadsmith-lab-canonical-catalog
+./target/debug/loadsmith-lab origin local add images  ../loadsmith-lab-canonical-images
 ```
 
 **5. Run a smoke test:**
@@ -61,8 +61,8 @@ docker info
 ./target/debug/loadsmith-lab run --loadsmith ../loadsmith --select catalog/postgres-to-jsonl
 ```
 
-On the first run, the lab builds two images automatically: the `images/postgres-15`
-image (tagged `loadsmith-lab/images/postgres-15:local`, seeds 100,000 rows, ~2–3 min)
+On the first run, the lab builds two images automatically: the `images/lab-postgres-15`
+image (tagged `loadsmith-lab/images/lab-postgres-15:local`, seeds 100,000 rows, ~2–3 min)
 and, because of `--loadsmith`, `loadsmith:local` from the source tree (cargo-chef
 cooks dependencies once, then caches them). Subsequent runs reuse both cached
 layers and start quickly.

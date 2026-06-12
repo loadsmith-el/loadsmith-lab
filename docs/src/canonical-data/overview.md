@@ -95,6 +95,6 @@ After changing the data, **rebuild the affected image** so the new CSV is baked
 in (a cached image predating the change keeps the old data):
 
 ```bash
-docker rmi loadsmith-lab/images/postgres-15:local
-./target/debug/loadsmith-lab build --select images/postgres-15
+docker rmi loadsmith-lab/images/lab-postgres-15:local
+./target/debug/loadsmith-lab build --select images/lab-postgres-15
 ```

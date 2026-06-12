@@ -22,17 +22,17 @@ query a database, …).
 ## Layout
 
 Each bundle lives in its own directory under `bundles/` in the
-`loadsmith-lab-catalog` repo, addressed as `catalog/<name>`:
+`loadsmith-lab-canonical-catalog` repo, addressed as `catalog/<name>`:
 
 ```
-loadsmith-lab-catalog/bundles/my-bundle/
+loadsmith-lab-canonical-catalog/bundles/my-bundle/
   bundle.yaml      ← the case sequence + hook script paths
   Dockerfile       ← builds the image the hook scripts run in
   scripts/         ← setup/validate/cleanup scripts, COPYed into the image
 ```
 
 Add a matching entry under `[bundles]` in
-`loadsmith-lab-catalog/loadsmith-lab.toml`.
+`loadsmith-lab-canonical-catalog/loadsmith-lab.toml`.
 
 ## Structure
 

@@ -30,9 +30,9 @@ When you run `--select catalog/postgres-to-jsonl`, the lab:
 1. **Finds the case** — resolves `catalog/postgres-to-jsonl` through the registered
    origins (a live local origin, or an installed copy) to its `case.yaml`.
 2. **Creates a Docker network** named `ls-lab-<uuid>`.
-3. **Resolves the service image** — the case references it as `images/postgres-15`;
+3. **Resolves the service image** — the case references it as `images/lab-postgres-15`;
    the lab resolves that origin's build context and the local tag
-   `loadsmith-lab/images/postgres-15:local`:
+   `loadsmith-lab/images/lab-postgres-15:local`:
    - If it's in the local Docker cache: uses it immediately.
    - If not: tries to pull from a registry, then builds from the resolved `Dockerfile`.
 4. **Starts the Postgres container** on the network with hostname `pg`.
@@ -75,8 +75,8 @@ loadsmith via the `NO_COLOR=1` environment variable.
 ## First run: image building
 
 The first time you run `catalog/postgres-to-jsonl`, the image
-`loadsmith-lab/images/postgres-15:local` does not exist in your local Docker cache.
-The lab builds it automatically from the `images/postgres-15` build context. This
+`loadsmith-lab/images/lab-postgres-15:local` does not exist in your local Docker cache.
+The lab builds it automatically from the `images/lab-postgres-15` build context. This
 takes 2–3 minutes. After the build, the image is cached locally. Every subsequent
 run (and every other case that uses the same image) starts in seconds.
 

@@ -28,7 +28,7 @@ is set, only the case name is shown.
 Setup steps are printed as dimmed lines before the loadsmith output:
 
 ```
-  image loadsmith-lab/images/postgres-15:local already in cache
+  image loadsmith-lab/images/lab-postgres-15:local already in cache
   waiting for postgres at 172.18.0.2:5432...
   postgres ready
 ```
@@ -36,7 +36,7 @@ Setup steps are printed as dimmed lines before the loadsmith output:
 If the image was built (not cached), the build time appears:
 
 ```
-  image loadsmith-lab/images/postgres-15:local built (134.2s)
+  image loadsmith-lab/images/lab-postgres-15:local built (134.2s)
 ```
 
 ## Framed loadsmith output

@@ -27,16 +27,16 @@ loadsmith-lab/                            ← THIS repo: the engine (4 crates)
     loadsmith-lab-docker/
     loadsmith-lab-report/
 
-loadsmith-lab-catalog/                    ← the "catalog" origin
+loadsmith-lab-canonical-catalog/                    ← the "catalog" origin
   loadsmith-lab.toml                      ← manifest: name → description per category
   cases/postgres-to-jsonl/
     case.yaml                             ← what to run and what to assert
     pipeline.yaml                         ← the loadsmith pipeline
   bundles/<name>/                         ← bundle.yaml + Dockerfile + scripts/
 
-loadsmith-lab-images/                     ← the "images" origin
+loadsmith-lab-canonical-images/                     ← the "images" origin
   loadsmith-lab.toml                      ← manifest: name → description
-  images/postgres-15/                     ← build context (no committed data)
+  images/lab-postgres-15/                     ← build context (no committed data)
     Dockerfile                            ← multi-stage: clones the data repo + generates the CSV
     init.sql
 

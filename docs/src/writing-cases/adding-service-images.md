@@ -3,7 +3,7 @@
 A service image is a Docker image that provides a dependency for a case — a
 database, a message queue, a file server. The lab can use any public Docker image
 directly, or build a custom image from a self-contained build context in the
-**`loadsmith-lab-images`** repo (the "images" origin).
+**`loadsmith-lab-canonical-images`** repo (the "images" origin).
 
 ## Using an existing public image
 
@@ -23,17 +23,17 @@ No Dockerfile is needed. The lab will pull `redis:7` from Docker Hub on first us
 
 ## Building a custom lab image
 
-Custom images live in `loadsmith-lab-images/images/<name>/` — just a `Dockerfile`
+Custom images live in `loadsmith-lab-canonical-images/images/<name>/` — just a `Dockerfile`
 plus init files (no committed data). They're addressed as `images/<name>`
 (origin/name) and built under a local tag:
 
 ```
-images/postgres-15   →   tag loadsmith-lab/images/postgres-15:local
+images/lab-postgres-15   →   tag loadsmith-lab/images/lab-postgres-15:local
 images/mysql-8        →   tag loadsmith-lab/images/mysql-8:local
 ```
 
 The directory name *is* the item name — no prefix stripping. Add an entry under
-`[images]` in `loadsmith-lab-images/loadsmith-lab.toml` so it shows up in the
+`[images]` in `loadsmith-lab-canonical-images/loadsmith-lab.toml` so it shows up in the
 manifest.
 
 The image generates its own seed CSV at build time: a **multi-stage** Dockerfile
@@ -45,12 +45,12 @@ clones `loadsmith-lab-canonical-data` (pinned) and runs `generate.py`, then
 **1. Create the directory:**
 
 ```bash
-mkdir -p loadsmith-lab-images/images/mysql-8
-touch loadsmith-lab-images/images/mysql-8/Dockerfile
-touch loadsmith-lab-images/images/mysql-8/init.sql
+mkdir -p loadsmith-lab-canonical-images/images/mysql-8
+touch loadsmith-lab-canonical-images/images/mysql-8/Dockerfile
+touch loadsmith-lab-canonical-images/images/mysql-8/init.sql
 ```
 
-**2. Write the multi-stage Dockerfile** (mirror `postgres-15/Dockerfile`):
+**2. Write the multi-stage Dockerfile** (mirror `lab-postgres-15/Dockerfile`):
 
 ```dockerfile
 # ── stage 1: generate the canonical CSV from the data repo (pinned) ──
@@ -76,7 +76,7 @@ ENV MYSQL_ROOT_PASSWORD=lab
 The CSV arrives from the `data` stage as `events.csv` — your final stage always
 `COPY --from=data … events.csv`. Pin `DATA_REF` to a tag for reproducibility.
 
-**2b. Register it in the manifest** (`loadsmith-lab-images/loadsmith-lab.toml`):
+**2b. Register it in the manifest** (`loadsmith-lab-canonical-images/loadsmith-lab.toml`):
 
 ```toml
 [images]
@@ -124,7 +124,7 @@ Or let it build automatically the first time a case that needs it runs.
 
 ## The Postgres image in detail
 
-`loadsmith-lab-images/images/postgres-15/` is the reference implementation for a
+`loadsmith-lab-canonical-images/images/lab-postgres-15/` is the reference implementation for a
 seeded lab image.
 
 **`Dockerfile`** (multi-stage — a `data` stage generates the CSV, the postgres
@@ -196,8 +196,8 @@ Images are cached locally by Docker. If you change the Dockerfile or `init.sql`,
 you need to rebuild:
 
 ```bash
-docker rmi loadsmith-lab/images/postgres-15:local
-./target/debug/loadsmith-lab build --select images/postgres-15
+docker rmi loadsmith-lab/images/lab-postgres-15:local
+./target/debug/loadsmith-lab build --select images/lab-postgres-15
 ```
 
 Or force a rebuild by removing the local image before running a case.

@@ -126,7 +126,7 @@ struct RunArgs {
 
 #[derive(Args)]
 struct BuildArgs {
-    /// Build a specific image by name (<origin>/<name>, e.g. "images/postgres-15")
+    /// Build a specific image by name (<origin>/<name>, e.g. "images/lab-postgres-15")
     #[arg(long)]
     select: Option<String>,
 

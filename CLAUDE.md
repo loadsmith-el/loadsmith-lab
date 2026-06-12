@@ -23,7 +23,7 @@ source itself. Don't guess at "why" — go read it.
   [`image.rs`](crates/loadsmith-lab-runner/src/image.rs)) — letting Docker
   resolve the host's native architecture is what lets the same lab run
   unmodified on an amd64 dev box or an arm64/Graviton host. New service images
-  (`loadsmith-lab-images/images/<name>/Dockerfile`) should be based on images
+  (`loadsmith-lab-canonical-images/images/<name>/Dockerfile`) should be based on images
   that publish official `arm64` variants too (most do — `postgres`, `debian`, …).
 
 ## Origins: engine + catalog + images
@@ -32,9 +32,9 @@ This repo is the **engine only** — it ships no cases/bundles/images. Content
 lives in two sibling repos resolved as **origins**, everything addressed as
 `<origin>/<name>`:
 
-- `loadsmith-lab-catalog` — `cases/<name>/` + `bundles/<name>/` + a root
+- `loadsmith-lab-canonical-catalog` — `cases/<name>/` + `bundles/<name>/` + a root
   `loadsmith-lab.toml` manifest (name → description per category).
-- `loadsmith-lab-images` — `images/<name>/` build contexts (Dockerfile + init)
+- `loadsmith-lab-canonical-images` — `images/<name>/` build contexts (Dockerfile + init)
   + a root `loadsmith-lab.toml` manifest. No committed seed data: each image's
   Dockerfile **generates the canonical CSV at build time** in a build stage that
   clones `loadsmith-lab-canonical-data` (pinned tag) and runs `generate.py`,
@@ -47,7 +47,7 @@ lives in two sibling repos resolved as **origins**, everything addressed as
 An origin is **remote** (a git repo, registered then `install`ed into the XDG
 workdir) or **local** (a path read live in place — the dev workflow). A case's
 service image is itself an `<origin>/<name>` reference (e.g.
-`image: images/postgres-15`); the runner resolves its build context from that
+`image: images/lab-postgres-15`); the runner resolves its build context from that
 origin via [`origin.rs`](crates/loadsmith-lab-runner/src/origin.rs) and builds
 a local tag `loadsmith-lab/<origin>/<name>:local`. See
 [docs/src/architecture/overview.md](docs/src/architecture/overview.md).
@@ -61,8 +61,8 @@ a local tag `loadsmith-lab/<origin>/<name>:local`. See
 cargo build                                            # build the workspace
 
 # Dev setup (once): register the sibling content repos as LOCAL origins (read live)
-cargo run -p loadsmith-lab-cli -- origin local add catalog ../loadsmith-lab-catalog
-cargo run -p loadsmith-lab-cli -- origin local add images  ../loadsmith-lab-images
+cargo run -p loadsmith-lab-cli -- origin local add catalog ../loadsmith-lab-canonical-catalog
+cargo run -p loadsmith-lab-cli -- origin local add images  ../loadsmith-lab-canonical-images
 
 cargo run -p loadsmith-lab-cli -- list                 # list available cases (<origin>/<name>)
 cargo run -p loadsmith-lab-cli -- run --select catalog/postgres-to-jsonl
@@ -70,7 +70,7 @@ cargo run -p loadsmith-lab-cli -- run --all
 cargo run -p loadsmith-lab-cli -- run --all --loadsmith ../loadsmith            # build the core from source (a project dir or a binary)
 cargo run -p loadsmith-lab-cli -- run --select catalog/postgres-to-jsonl --loadsmith ../loadsmith --plugin ../loadsmith-canonical-plugins/jsonl   # override a plugin with a local build
 cargo run -p loadsmith-lab-cli -- build --all          # build all available service images
-cargo run -p loadsmith-lab-cli -- build --select images/postgres-15
+cargo run -p loadsmith-lab-cli -- build --select images/lab-postgres-15
 cargo run -p loadsmith-lab-cli -- --log-level debug run --select catalog/postgres-to-jsonl   # verbose; logs go to stderr
 ```
 

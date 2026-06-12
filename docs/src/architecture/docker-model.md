@@ -24,7 +24,7 @@ registered via `scopeguard::defer` before any containers are started.
 For each service declared in `case.yaml`:
 
 1. **Image resolution** — the case references its service image as an
-   `<origin>/<name>` reference (e.g. `images/postgres-15`); the runner resolves
+   `<origin>/<name>` reference (e.g. `images/lab-postgres-15`); the runner resolves
    that origin's build context and derives the local tag
    `loadsmith-lab/<origin>/<name>:local`, then tries in order:
    - Local Docker cache (image already exists): instant
@@ -52,8 +52,8 @@ runner resolves (via `origin.rs`) to a build context directory and a local
 Docker tag:
 
 ```
-images/postgres-15  →  context loadsmith-lab-images/images/postgres-15/
-                    →  tag     loadsmith-lab/images/postgres-15:local
+images/lab-postgres-15  →  context loadsmith-lab-canonical-images/images/lab-postgres-15/
+                    →  tag     loadsmith-lab/images/lab-postgres-15:local
 ```
 
 The item name *is* the directory name — no prefix stripping. The slash-separated

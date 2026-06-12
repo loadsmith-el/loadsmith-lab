@@ -14,14 +14,14 @@ The user invoked this command with: $ARGUMENTS
 ## Read these first (ground truth — do not skip)
 
 Content lives in two sibling repos (the engine ships none): images go in
-`loadsmith-lab-images`, cases in `loadsmith-lab-catalog`. Read the existing
+`loadsmith-lab-canonical-images`, cases in `loadsmith-lab-canonical-catalog`. Read the existing
 postgres image and case as the working reference. The new scaffold must mirror
 their structure exactly:
 
-1. `../loadsmith-lab-images/images/postgres-15/Dockerfile` — how an image is built (note: **no DuckDB, no Parquet**)
-2. `../loadsmith-lab-images/images/postgres-15/init.sql` — the canonical 34-column schema + bulk load + indexes
-3. `../loadsmith-lab-catalog/cases/postgres-to-jsonl/case.yaml` — service definition + **readiness probe** + expectations
-4. `../loadsmith-lab-catalog/cases/postgres-to-jsonl/pipeline.yaml` — the loadsmith source→jsonl pipeline
+1. `../loadsmith-lab-canonical-images/images/lab-postgres-15/Dockerfile` — how an image is built (note: **no DuckDB, no Parquet**)
+2. `../loadsmith-lab-canonical-images/images/lab-postgres-15/init.sql` — the canonical 34-column schema + bulk load + indexes
+3. `../loadsmith-lab-canonical-catalog/cases/postgres-to-jsonl/case.yaml` — service definition + **readiness probe** + expectations
+4. `../loadsmith-lab-canonical-catalog/cases/postgres-to-jsonl/pipeline.yaml` — the loadsmith source→jsonl pipeline
 5. `crates/loadsmith-lab-runner/src/case.rs` — the case schema you must conform to
    (especially `ReadinessDef` / `PostgresReadiness`)
 
@@ -44,12 +44,12 @@ gitignored):
   `loadsmith-lab-canonical-data` (pinned `DATA_REF`) and runs `generate.py`; the
   service stage does `COPY --from=data /gen/spacecraft_telemetry_events.csv
   /…/events.csv`. The lab tars only the image dir's files (`Dockerfile`,
-  `init.sql`) — it injects nothing. Mirror `postgres-15/Dockerfile` exactly.
+  `init.sql`) — it injects nothing. Mirror `lab-postgres-15/Dockerfile` exactly.
 - **Naming.** The image item is `images/<name>` (origin/name), built under the
   local tag `loadsmith-lab/images/<name>:local`. The item name *is* the directory
   name — no prefix stripping. Add an entry under `[images]` in
-  `../loadsmith-lab-images/loadsmith-lab.toml`, and under `[cases]` in
-  `../loadsmith-lab-catalog/loadsmith-lab.toml`.
+  `../loadsmith-lab-canonical-images/loadsmith-lab.toml`, and under `[cases]` in
+  `../loadsmith-lab-canonical-catalog/loadsmith-lab.toml`.
 - **Credentials are always `lab` / `lab` / `lab`** (user / password / database or
   index), set via the image's native env vars, so every case is uniform.
 - **Empty string means NULL.** The CSV encodes nulls as empty fields; the loader
@@ -70,7 +70,7 @@ gitignored):
   if the sibling repo isn't present). Use whatever the user passed if given.
 - **notes** — optional extra context
 
-### 2. `../loadsmith-lab-images/images/<service>-<version>/Dockerfile`
+### 2. `../loadsmith-lab-canonical-images/images/<service>-<version>/Dockerfile`
 - **Global ARGs** (before the first `FROM`):
   `ARG DATA_REPO=https://github.com/loadsmith-el/loadsmith-lab-canonical-data.git`
   and `ARG DATA_REF=<data-ref>` (the revision resolved in step 1). Declared
@@ -79,7 +79,7 @@ gitignored):
   `ARG DATA_REPO` / `ARG DATA_REF` (no value — inherits the global default),
   then
   `RUN git clone --depth 1 --branch "${DATA_REF}" "${DATA_REPO}" /gen && python /gen/generate.py`.
-  Mirror `postgres-15/Dockerfile` exactly.
+  Mirror `lab-postgres-15/Dockerfile` exactly.
 - **Stage 2**: `FROM <official-image>:<version>`, then re-declare `ARG DATA_REF`
   and add `LABEL org.opencontainers.image.version="${DATA_REF}"` so the image
   self-reports its baked-in data revision (the CI derives the `:data-<ref>` tag
@@ -95,15 +95,15 @@ gitignored):
   native CSV bulk loader (`LOAD DATA INFILE`, `COPY`, `clickhouse-client
   --query`, etc.).
 
-### 3. `../loadsmith-lab-images/images/<service>-<version>/init.<ext>`
+### 3. `../loadsmith-lab-canonical-images/images/<service>-<version>/init.<ext>`
 - Recreate the **exact** `spacecraft_telemetry_events` schema from
-  `postgres-15/init.sql`, mapping each of the 34 columns to the target's
+  `lab-postgres-15/init.sql`, mapping each of the 34 columns to the target's
   closest native type (preserve NOT NULL / NULL and decimal precision/scale where
   the engine supports it).
 - Bulk-load `events.csv` (header row present, empty = NULL).
 - Add the same secondary indexes where the engine supports them.
 
-### 4. `../loadsmith-lab-catalog/cases/<service>-<version>-to-jsonl/case.yaml`
+### 4. `../loadsmith-lab-canonical-catalog/cases/<service>-<version>-to-jsonl/case.yaml`
 Mirror `cases/postgres-to-jsonl/case.yaml`. Critical details:
 
 ```yaml
@@ -141,7 +141,7 @@ expect:
     row_count: 100000
 ```
 
-### 5. `../loadsmith-lab-catalog/cases/<service>-<version>-to-jsonl/pipeline.yaml`
+### 5. `../loadsmith-lab-canonical-catalog/cases/<service>-<version>-to-jsonl/pipeline.yaml`
 Mirror `cases/postgres-to-jsonl/pipeline.yaml`, using the correct `source.type`
 and connection config for the service. Connect as `host: <alias>` (the Docker
 alias — loadsmith shares the network and reaches it directly; no rewriting), port
@@ -208,15 +208,15 @@ it:
 ## Verify before finishing
 
 - The case's `image:` reference matches the image directory: `images/<service>-<version>`
-  ↔ `../loadsmith-lab-images/images/<service>-<version>/`.
+  ↔ `../loadsmith-lab-canonical-images/images/<service>-<version>/`.
 - The Dockerfile is multi-stage: a `data` stage clones the canonical-data repo +
   runs `generate.py`; the service stage does `COPY --from=data … events.csv`.
 - **No CSV is committed** in the image directory (it's generated at build time).
 - `DATA_REF` is a global `ARG` and the final stage carries
   `LABEL org.opencontainers.image.version="${DATA_REF}"` (no hand-written
   VERSION file — the CI derives the `:data-<ref>` tag from `DATA_REF`).
-- Both manifests updated: `[images]` in `loadsmith-lab-images/loadsmith-lab.toml`,
-  `[cases]` in `loadsmith-lab-catalog/loadsmith-lab.toml`.
+- Both manifests updated: `[images]` in `loadsmith-lab-canonical-images/loadsmith-lab.toml`,
+  `[cases]` in `loadsmith-lab-canonical-catalog/loadsmith-lab.toml`.
 - The init schema has all 34 columns in the same order as the CSV header.
 - No DuckDB, no Parquet, no apt-get for data tooling.
 

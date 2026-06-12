@@ -55,17 +55,17 @@ separate repos ("origins"), so you only pull in what you need:
 
 ```text
 loadsmith-lab/                 ← this repo: the engine (4 crates), knows how, not what
-loadsmith-lab-catalog/         ← cases/ + bundles/ + loadsmith-lab.toml (the "catalog" origin)
-loadsmith-lab-images/          ← images/<name>/ (build contexts) + loadsmith-lab.toml
+loadsmith-lab-canonical-catalog/         ← cases/ + bundles/ + loadsmith-lab.toml (the "catalog" origin)
+loadsmith-lab-canonical-images/          ← images/<name>/ (build contexts) + loadsmith-lab.toml
 loadsmith-lab-canonical-data/  ← generate.py + schema (build-time data dependency, not an origin)
 ```
 
 ```text
-loadsmith-lab-catalog/
+loadsmith-lab-canonical-catalog/
   loadsmith-lab.toml          manifest: name → description, per category
   cases/<name>/               case.yaml (services + expectations) + pipeline.yaml
   bundles/<name>/             bundle.yaml + Dockerfile + scripts/
-loadsmith-lab-images/
+loadsmith-lab-canonical-images/
   loadsmith-lab.toml          manifest: name → description
   images/<name>/              Dockerfile + init — generates its seed CSV at build time
 loadsmith-lab-canonical-data/
@@ -74,7 +74,7 @@ loadsmith-lab-canonical-data/
 ```
 
 Everything is addressed as **`<origin>/<name>`** (e.g. `catalog/postgres-to-jsonl`,
-`images/postgres-15`) — the origin is part of the identity, so two origins can
+`images/lab-postgres-15`) — the origin is part of the identity, so two origins can
 ship the same name with no conflict.
 
 **Origins** are either **remote** (a git repo, registered then `install`ed into a
@@ -138,8 +138,8 @@ The lab and its content repos are siblings of the `loadsmith` repo:
 projects/
   loadsmith/                ← the tool
   loadsmith-lab/            ← this repo (the engine)
-  loadsmith-lab-catalog/    ← cases + bundles
-  loadsmith-lab-images/     ← service images
+  loadsmith-lab-canonical-catalog/    ← cases + bundles
+  loadsmith-lab-canonical-images/     ← service images
 ```
 
 ```bash
@@ -151,14 +151,14 @@ cd ../loadsmith && cargo build
 cd ../loadsmith-lab && cargo build
 
 # 3. register the catalog + images repos as LOCAL origins (read live, no install)
-./target/debug/loadsmith-lab origin local add catalog ../loadsmith-lab-catalog
-./target/debug/loadsmith-lab origin local add images  ../loadsmith-lab-images
+./target/debug/loadsmith-lab origin local add catalog ../loadsmith-lab-canonical-catalog
+./target/debug/loadsmith-lab origin local add images  ../loadsmith-lab-canonical-images
 
 # 4. run a case (auto-builds the service image on first run)
 ./target/debug/loadsmith-lab run --loadsmith ../loadsmith --select catalog/postgres-to-jsonl
 ```
 
-Requires Docker. The first run builds the `images/postgres-15` image (seeded with
+Requires Docker. The first run builds the `images/lab-postgres-15` image (seeded with
 100k rows), which takes a moment; subsequent runs reuse it.
 
 Local origins are read live from disk, so edits to a case/image take effect with
@@ -173,7 +173,7 @@ origin and install what you need — see [Commands](#commands) and the
 ```bash
 # Origins — where content comes from
 loadsmith-lab origin list                              # all registered origins (remote + local)
-loadsmith-lab origin local add catalog ../loadsmith-lab-catalog   # register a path, read live
+loadsmith-lab origin local add catalog ../loadsmith-lab-canonical-catalog   # register a path, read live
 loadsmith-lab origin remote add team https://github.com/acme/cases.git   # register + clone a git repo
 loadsmith-lab origin show team                         # what an origin offers (its manifest)
 loadsmith-lab origin remote update --all               # git pull every remote origin
@@ -191,7 +191,7 @@ loadsmith-lab run --select catalog/postgres-to-jsonl   # run against a Loadsmith
 
 loadsmith-lab list                                     # list available (installed + local) cases
 loadsmith-lab list --available                         # also show not-yet-installed remote cases
-loadsmith-lab build --select images/postgres-15        # build a service image explicitly
+loadsmith-lab build --select images/lab-postgres-15        # build a service image explicitly
 
 loadsmith-lab bundle list                              # list available bundles
 loadsmith-lab bundle run --loadsmith ../loadsmith --select catalog/parquet-destination   # run a bundle
@@ -209,16 +209,16 @@ loadsmith-lab bundle run --all --loadsmith ../loadsmith                 # run ev
 New content goes in the **catalog** and **images** repos, not in this engine repo.
 A case is two files plus a manifest entry:
 
-1. `loadsmith-lab-catalog/cases/<name>/case.yaml` — services, readiness, `expect`
-2. `loadsmith-lab-catalog/cases/<name>/pipeline.yaml` — the Loadsmith pipeline to run
-3. add the case under `[cases]` in `loadsmith-lab-catalog/loadsmith-lab.toml`
-4. if a new service image is needed, add `loadsmith-lab-images/images/<name>/`
+1. `loadsmith-lab-canonical-catalog/cases/<name>/case.yaml` — services, readiness, `expect`
+2. `loadsmith-lab-canonical-catalog/cases/<name>/pipeline.yaml` — the Loadsmith pipeline to run
+3. add the case under `[cases]` in `loadsmith-lab-canonical-catalog/loadsmith-lab.toml`
+4. if a new service image is needed, add `loadsmith-lab-canonical-images/images/<name>/`
    (a multi-stage Dockerfile + init that generates the seed CSV at build time —
    see the postgres reference) and an entry under `[images]` in
-   `loadsmith-lab-images/loadsmith-lab.toml` — it's auto-built on first run
+   `loadsmith-lab-canonical-images/loadsmith-lab.toml` — it's auto-built on first run
 
 A case references its service image as an `<origin>/<name>` reference (e.g.
-`image: images/postgres-15`). With both repos registered as local origins, the new
+`image: images/lab-postgres-15`). With both repos registered as local origins, the new
 content is picked up live — no install step.
 
 ### Convention: volume cases use the `null` destination
@@ -253,7 +253,7 @@ Cases are never modified by a bundle; they stay runnable standalone with
 `run --select`. A bundle only chains and wraps them.
 
 ```
-loadsmith-lab-catalog/bundles/<name>/
+loadsmith-lab-canonical-catalog/bundles/<name>/
   bundle.yaml      ← the case sequence (each as <origin>/<name>) + hook script paths
   Dockerfile       ← builds the image the hooks run in
   scripts/         ← setup/validate/cleanup scripts

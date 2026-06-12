@@ -3,7 +3,7 @@
 The `loadsmith-lab` binary is the entry point for all lab operations.
 
 Cases, bundles, and images are addressed as **`<origin>/<name>`** (e.g.
-`catalog/postgres-to-jsonl`, `images/postgres-15`). See
+`catalog/postgres-to-jsonl`, `images/lab-postgres-15`). See
 [Origins, manifests & install](../architecture/overview.md) for the model and
 the `origin`/`install` commands below.
 
@@ -140,7 +140,7 @@ team/mysql-to-parquet
 Pre-build lab service images without running any case.
 
 ```bash
-loadsmith-lab build --select images/postgres-15
+loadsmith-lab build --select images/lab-postgres-15
 loadsmith-lab build --all
 ```
 
@@ -148,17 +148,17 @@ loadsmith-lab build --all
 
 | Flag | Default | Description |
 |---|---|---|
-| `--select <origin>/<name>` | — | Build this image (e.g. `images/postgres-15`) |
+| `--select <origin>/<name>` | — | Build this image (e.g. `images/lab-postgres-15`) |
 | `--all` | — | Build all available images (installed + local origins) |
 
 Each image builds under the local tag `loadsmith-lab/<origin>/<name>:local`
-(e.g. `loadsmith-lab/images/postgres-15:local`). Build follows the resolution
+(e.g. `loadsmith-lab/images/lab-postgres-15:local`). Build follows the resolution
 order: an image already in the local Docker cache is not rebuilt. Remove it
 first to force a rebuild:
 
 ```bash
-docker rmi loadsmith-lab/images/postgres-15:local
-loadsmith-lab build --select images/postgres-15
+docker rmi loadsmith-lab/images/lab-postgres-15:local
+loadsmith-lab build --select images/lab-postgres-15
 ```
 
 Service images generate their canonical seed CSV at build time (a Dockerfile

@@ -1,7 +1,7 @@
 # Schema Reference
 
 The `spacecraft_telemetry_events` table has 34 columns. The table definition
-below is the canonical SQL schema as created by `images/postgres-15/init.sql`.
+below is the canonical SQL schema as created by `images/lab-postgres-15/init.sql`.
 
 ## Table definition
 

@@ -68,7 +68,7 @@ impl fmt::Display for Kind {
 /// [[origins]]
 /// name = "catalog"
 /// source = "git"      # or "path"
-/// location = "https://github.com/loadsmith-el/loadsmith-lab-catalog.git"
+/// location = "https://github.com/loadsmith-el/loadsmith-lab-canonical-catalog.git"
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OriginConfig {
@@ -114,12 +114,12 @@ fn default_config() -> Config {
             OriginConfig {
                 name: "catalog".into(),
                 source: "git".into(),
-                location: "https://github.com/loadsmith-el/loadsmith-lab-catalog.git".into(),
+                location: "https://github.com/loadsmith-el/loadsmith-lab-canonical-catalog.git".into(),
             },
             OriginConfig {
                 name: "images".into(),
                 source: "git".into(),
-                location: "https://github.com/loadsmith-el/loadsmith-lab-images.git".into(),
+                location: "https://github.com/loadsmith-el/loadsmith-lab-canonical-images.git".into(),
             },
         ],
     }

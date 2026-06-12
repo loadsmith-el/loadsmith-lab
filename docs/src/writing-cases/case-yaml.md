@@ -1,16 +1,16 @@
 # case.yaml
 
 Each case lives in its own directory under `cases/` in the
-`loadsmith-lab-catalog` repo (the "catalog" origin), addressed as
+`loadsmith-lab-canonical-catalog` repo (the "catalog" origin), addressed as
 `catalog/<name>`. A case directory contains exactly two files:
 
 ```
-loadsmith-lab-catalog/cases/my-case/
+loadsmith-lab-canonical-catalog/cases/my-case/
   case.yaml      ← what services to start and what to assert
   pipeline.yaml  ← the loadsmith pipeline to run
 ```
 
-Add a matching entry under `[cases]` in `loadsmith-lab-catalog/loadsmith-lab.toml`
+Add a matching entry under `[cases]` in `loadsmith-lab-canonical-catalog/loadsmith-lab.toml`
 so the case appears in the origin's manifest.
 
 ## Full structure
@@ -154,7 +154,7 @@ case:
   tags: [postgres, jsonl, smoke]
 
 services:
-  - image: images/postgres-15
+  - image: images/lab-postgres-15
     alias: pg
     readiness:
       tcp: 5432
