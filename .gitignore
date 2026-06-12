@@ -1,0 +1,5 @@
+/target
+.venv/
+
+# mdbook build output (generated from docs/src/)
+/docs/book/

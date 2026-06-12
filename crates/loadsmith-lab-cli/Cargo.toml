@@ -1,0 +1,21 @@
+[package]
+name    = "loadsmith-lab-cli"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+
+[[bin]]
+name = "loadsmith-lab"
+path = "src/main.rs"
+
+[dependencies]
+tokio      = { workspace = true }
+anyhow     = { workspace = true }
+clap       = { workspace = true }
+colored    = { workspace = true }
+serde_yaml = { workspace = true }
+tracing    = { workspace = true }
+tracing-subscriber = { workspace = true }
+loadsmith-lab-docker = { path = "../loadsmith-lab-docker" }
+loadsmith-lab-runner = { path = "../loadsmith-lab-runner" }
+loadsmith-lab-report = { path = "../loadsmith-lab-report" }
