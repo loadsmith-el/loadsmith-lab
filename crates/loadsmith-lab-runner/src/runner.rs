@@ -14,11 +14,12 @@ use crate::origin::{image_tag, resolve_item, Config, Kind};
 pub struct RunOpts {
     /// The loadsmith core to run, when given: a path to a binary (wrapped in a
     /// minimal image) or a Rust project dir (built from its Dockerfile). When
-    /// `None`, a published image is used (`loadsmith_tag` / the case's image).
+    /// `None`, the canonical published image is pulled (see `loadsmith_tag`).
     /// Loadsmith always runs in a container.
     pub loadsmith_source: Option<PathBuf>,
-    /// Use the published image `loadsmith:<tag>` (only when `loadsmith_source`
-    /// is `None`).
+    /// Pick the version tag of the canonical published image
+    /// `ghcr.io/loadsmith-el/loadsmith:<tag>` (only when `loadsmith_source` is
+    /// `None`; otherwise the rolling `:slim` is pulled).
     pub loadsmith_tag: Option<String>,
     /// Registered origins, used to resolve a case's service-image references
     /// (`<origin>/<name>`) to a build context.
@@ -168,7 +169,7 @@ async fn run_container(
     net_name: &str,
     output_dir: &Path,
 ) -> Result<(i64, String)> {
-    // Build from local source (--local) or resolve a published image.
+    // Build/wrap a local core (--loadsmith) or pull the canonical published image.
     let image = resolve_loadsmith_image(docker, opts, case).await?;
 
     // Plugins aren't bundled in the slim image — mount a host plugin dir

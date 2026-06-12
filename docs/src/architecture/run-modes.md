@@ -26,13 +26,16 @@ afterward via cargo-chef's dependency layer). The build is hermetic — it compi
 inside a Debian-based Rust image and ships on a matching Debian runtime, so it is
 correct regardless of the host's glibc; the host's `target/` is never copied in.
 
-Without `--loadsmith`, the lab uses a **published image** (`--tag <tag>` →
-`loadsmith:<tag>`, otherwise `case.loadsmith.image`), resolved via local cache →
-registry pull; if neither present nor pullable, the run fails with a clear error.
+Without `--loadsmith`, the lab pulls the **canonical published image**
+`ghcr.io/loadsmith-el/loadsmith` — like the plugin index and the content origins,
+the package is fixed: `--tag <tag>` picks the version, a case may override the
+full ref via `loadsmith.image`, otherwise the rolling `:slim` variant is used.
+Resolved via local cache → registry pull; if not pullable, the run fails with a
+clear error.
 
 ```bash
-./target/debug/loadsmith-lab run --select catalog/postgres-to-jsonl              # case.loadsmith.image
-./target/debug/loadsmith-lab run --tag 0.1.0 --select catalog/postgres-to-jsonl  # loadsmith:0.1.0
+./target/debug/loadsmith-lab run --select catalog/postgres-to-jsonl                    # ghcr.io/loadsmith-el/loadsmith:slim
+./target/debug/loadsmith-lab run --tag v0.1.0-slim --select catalog/postgres-to-jsonl  # pin a version
 ```
 
 ## Plugins — a mounted cache, with `--plugin` overrides

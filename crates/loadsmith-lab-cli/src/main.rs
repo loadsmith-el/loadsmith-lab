@@ -69,11 +69,13 @@ struct BundleRunArgs {
     all: bool,
 
     /// Loadsmith core to run: a binary, or a Rust project dir to build (in a
-    /// rust:bookworm container). Without it, uses --tag / the case's published image.
+    /// rust:bookworm container). Without it, pulls the canonical published image
+    /// ghcr.io/loadsmith-el/loadsmith (see --tag).
     #[arg(long, value_name = "PATH")]
     loadsmith: Option<PathBuf>,
 
-    /// Use published image loadsmith:<tag> (ignored with --local)
+    /// Version tag of the canonical published image
+    /// ghcr.io/loadsmith-el/loadsmith:<tag> (e.g. v0.1.0-slim; default: slim)
     #[arg(long)]
     tag: Option<String>,
 
@@ -105,11 +107,13 @@ struct RunArgs {
     all: bool,
 
     /// Loadsmith core to run: a binary, or a Rust project dir to build (in a
-    /// rust:bookworm container). Without it, uses --tag / the case's published image.
+    /// rust:bookworm container). Without it, pulls the canonical published image
+    /// ghcr.io/loadsmith-el/loadsmith (see --tag).
     #[arg(long, value_name = "PATH")]
     loadsmith: Option<PathBuf>,
 
-    /// Use published image loadsmith:<tag> (ignored with --local)
+    /// Version tag of the canonical published image
+    /// ghcr.io/loadsmith-el/loadsmith:<tag> (e.g. v0.1.0-slim; default: slim)
     #[arg(long)]
     tag: Option<String>,
 

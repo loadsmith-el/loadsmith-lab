@@ -4,6 +4,7 @@ use serde::Deserialize;
 pub struct Case {
     pub case: CaseMeta,
     pub services: Vec<ServiceDef>,
+    #[serde(default)]
     pub loadsmith: LoadsmithDef,
     pub pipeline: PipelineDef,
     pub expect: Expect,
@@ -51,9 +52,13 @@ fn default_timeout() -> u64 {
     60
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct LoadsmithDef {
-    pub image: String,
+    /// Explicit per-case image override (a full ref). Normally omitted — the lab
+    /// resolves the canonical published image instead (`--tag` picks the version,
+    /// else the default `:slim`). See [`crate::image::resolve_loadsmith_image`].
+    #[serde(default)]
+    pub image: Option<String>,
     #[serde(default)]
     pub volumes: Vec<VolumeMount>,
     #[serde(default)]

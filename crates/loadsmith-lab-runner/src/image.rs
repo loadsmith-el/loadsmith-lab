@@ -8,6 +8,13 @@ use loadsmith_lab_docker::{
 use crate::case::Case;
 use crate::runner::RunOpts;
 
+/// The canonical published loadsmith core image. The lab pulls this by default —
+/// like the canonical plugin index and the content origins, the package is
+/// fixed; `--tag` picks the version, a case may override the full ref, else the
+/// rolling `slim` variant is used.
+const LOADSMITH_IMAGE: &str = "ghcr.io/loadsmith-el/loadsmith";
+const LOADSMITH_DEFAULT_TAG: &str = "slim";
+
 /// Prepares the host plugin directory mounted into the loadsmith container.
 ///
 /// Plugins are no longer bundled in the loadsmith image — they live in
@@ -223,8 +230,9 @@ fn dir_is_empty(dir: &Path) -> Result<bool> {
 /// - `--loadsmith <dir>` (a project): build `loadsmith:local` from its Dockerfile.
 /// - `--loadsmith <file>` (a binary): wrap it in a minimal image (the binary must
 ///   be runnable in `debian:bookworm-slim` — linux, glibc ≤ the base's).
-/// - neither: use a published image (`case.loadsmith.image`, or `loadsmith:<tag>`
-///   when `--tag` is given), pulling it if not already present.
+/// - neither: pull the canonical published image `ghcr.io/loadsmith-el/loadsmith`
+///   — `--tag <t>` picks the version, else a case's explicit `loadsmith.image`,
+///   else the rolling `:slim` variant. Pulled if not already present.
 pub async fn resolve_loadsmith_image(
     docker: &DockerClient,
     opts: &RunOpts,
@@ -244,9 +252,10 @@ pub async fn resolve_loadsmith_image(
             Ok("loadsmith:local".to_string())
         }
         None => {
-            let image = match &opts.loadsmith_tag {
-                Some(tag) => format!("loadsmith:{tag}"),
-                None => case.loadsmith.image.clone(),
+            let image = match (&opts.loadsmith_tag, &case.loadsmith.image) {
+                (Some(tag), _) => format!("{LOADSMITH_IMAGE}:{tag}"),
+                (None, Some(img)) => img.clone(),
+                (None, None) => format!("{LOADSMITH_IMAGE}:{LOADSMITH_DEFAULT_TAG}"),
             };
             if docker.image_exists(&image).await? {
                 return Ok(image);

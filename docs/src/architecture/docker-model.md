@@ -106,8 +106,10 @@ Loadsmith always runs in a container. Its image is resolved by
   Debian base, ships on a matching Debian runtime), so it is correct regardless of
   the host's glibc.
 
-- **default** — resolves the published image (`case.loadsmith.image`, or
-  `loadsmith:<tag>` with `--tag`) via cache → pull, erroring clearly if absent.
+- **default** — pulls the canonical published image
+  `ghcr.io/loadsmith-el/loadsmith` (`--tag <t>` picks the version, a case may
+  override the full ref via `loadsmith.image`, else the rolling `:slim`) via
+  cache → pull, erroring clearly if absent.
 
 The loadsmith container is started on the case network with the output dir mounted
 at `/output` and driven with

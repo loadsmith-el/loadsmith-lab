@@ -113,16 +113,21 @@ How to run loadsmith for this case.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `image` | string | yes | Published image for the default path (e.g. `loadsmith:latest`) |
+The whole `loadsmith:` block is **optional** — omit it unless the case needs
+extra mounts/env/args or a non-default image.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `image` | string | no | Override the loadsmith image with a full ref. Normally omitted — the lab pulls the canonical `ghcr.io/loadsmith-el/loadsmith` (`--tag` picks the version, else `:slim`) |
 | `volumes` | list | no | Extra bind mounts. Each entry has `host` and `container` paths |
 | `env` | list of strings | no | Environment variables for the loadsmith process |
 | `docker_args` | list of strings | no | Extra arguments for docker run |
 
-Loadsmith always runs in a container. The `image` field names the published image
-used by the default path; with `--loadsmith <path>` the lab builds/wraps a local
-core and ignores `image`. The output directory is always mounted at
-`/output` automatically, so `volumes` is only for *additional* mounts (don't remap
-`/output`).
+Loadsmith always runs in a container. By default the lab pulls the canonical
+published image; `--tag <tag>` picks the version and `--loadsmith <path>`
+builds/wraps a local core instead (both ignore a case's `image`). The output
+directory is always mounted at `/output` automatically, so `volumes` is only for
+*additional* mounts (don't remap `/output`).
 
 ### `pipeline`
 
@@ -165,8 +170,8 @@ services:
         password: lab
         probe_query: "SELECT 1 FROM spacecraft_telemetry_events LIMIT 1"
 
-loadsmith:
-  image: loadsmith:latest   # used by the default path; ignored when --loadsmith is given
+# `loadsmith:` is optional — omitted here, so the lab pulls the canonical image
+# ghcr.io/loadsmith-el/loadsmith (--tag picks the version, else :slim).
 
 pipeline:
   file: pipeline.yaml

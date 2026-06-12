@@ -37,10 +37,11 @@ services:
       - string
 
 # ─── Loadsmith invocation ─────────────────────────────────────────────────────
-loadsmith:
-  image: string          # required — the published image used by the default path
-                         #   (e.g. loadsmith:latest). Ignored when --loadsmith is
-                         #   given, which builds/wraps a local core instead.
+loadsmith:               # optional block (whole thing) — omit unless overriding
+  image: string          # optional — full image ref override. Normally omitted:
+                         #   the lab pulls ghcr.io/loadsmith-el/loadsmith (--tag
+                         #   picks the version, else :slim). Ignored when
+                         #   --loadsmith is given (builds/wraps a local core).
 
   volumes:               # optional — EXTRA bind mounts (the output dir is always
     - host: string       #   mounted at /output automatically; don't remap /output)

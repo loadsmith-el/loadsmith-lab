@@ -97,7 +97,8 @@ until first use.
 4. resolve the loadsmith image:
      --loadsmith <dir>:    build loadsmith:local from that project's Dockerfile
      --loadsmith <binary>: wrap the binary in a minimal image
-     default:              pull the published image (case.loadsmith.image / loadsmith:<tag>)
+     default:              pull the canonical image ghcr.io/loadsmith-el/loadsmith
+                           (--tag <t> picks the version, else :slim)
    then prepare the plugin dir: the cached canonical set (loadsmith plugin
    install --all) plus any --plugin overlays (binary, or a crate/workspace built
    in a rust:bookworm container)
