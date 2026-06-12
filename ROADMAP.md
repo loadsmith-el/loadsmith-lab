@@ -23,3 +23,10 @@ What's shipped and what's queued next. Shipped items are documented in
 - [ ] **More service images** — only `lab-postgres-15` exists today; additional
       source services would extend lab coverage beyond the postgres source
       plugin.
+- [ ] **Published docs + content-repo docs** — host the lab mdbook (GitHub
+      Pages) and give the content repos
+      (`loadsmith-lab-canonical-{catalog,images,data}`) proper docs beyond their
+      README/CLAUDE.
+- [ ] **End-to-end "build an EL" guide** (shared with loadsmith) — author a
+      pipeline, build an image with its plugins installed, and validate it with a
+      lab case; the natural getting-started for a real pipeline.
