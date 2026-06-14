@@ -17,16 +17,18 @@ What's shipped and what's queued next. Shipped items are documented in
 - [x] Test bundles — sequenced cases with setup/validate/cleanup hooks that
       run in a per-bundle image (no host deps); example
       `parquet-destination` validates single-file vs. chunked Parquet
+- [x] **Published docs + content-repo docs** — the lab mdbook is hosted on
+      GitHub Pages (<https://loadsmith-el.github.io/loadsmith-lab/>), built and
+      deployed on every push to `main` by
+      [`docs.yml`](.github/workflows/docs.yml). The content repos
+      (`loadsmith-lab-canonical-{catalog,images,data}`) each ship their own
+      published mdbook too.
 
 ## Planned
 
 - [ ] **More service images** — only `lab-postgres-15` exists today; additional
       source services would extend lab coverage beyond the postgres source
       plugin.
-- [ ] **Published docs + content-repo docs** — host the lab mdbook (GitHub
-      Pages) and give the content repos
-      (`loadsmith-lab-canonical-{catalog,images,data}`) proper docs beyond their
-      README/CLAUDE.
 - [ ] **End-to-end "build an EL" guide** (shared with loadsmith) — author a
       pipeline, build an image with its plugins installed, and validate it with a
       lab case; the natural getting-started for a real pipeline.

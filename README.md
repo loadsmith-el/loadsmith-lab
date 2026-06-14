@@ -1,6 +1,8 @@
 # Loadsmith Lab
 
-**The integration-test harness for [Loadsmith](../loadsmith).**
+> 📖 **Full documentation:** <https://loadsmith-el.github.io/loadsmith-lab/>
+
+**The integration-test harness for [Loadsmith](https://github.com/loadsmith-el/loadsmith).**
 
 Loadsmith Lab spins up real services in Docker, seeds them with canonical test
 data, runs Loadsmith against them end-to-end, and validates the output. Each test
