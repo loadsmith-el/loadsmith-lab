@@ -15,6 +15,12 @@ scopeguard = { workspace = true }
 uuid       = { workspace = true }
 tar        = { workspace = true }
 tokio-postgres = { workspace = true }
+# Pure-Rust MySQL client for the mysql readiness probe (no TLS needed: the probe
+# connects plain to the container bridge IP). default-features off keeps it light.
+mysql_async = { version = "0.37", default-features = false, features = ["minimal-rust"] }
+# Pure-Rust Oracle client for the oracle readiness probe (plaintext connect to
+# the container bridge IP — no TLS, so no crypto provider needed).
+oracle-rs  = { workspace = true }
 toml       = { workspace = true }
 dirs       = { workspace = true }
 loadsmith-lab-docker = { path = "../loadsmith-lab-docker" }

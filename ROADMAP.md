@@ -7,6 +7,11 @@ What's shipped and what's queued next. Shipped items are documented in
 
 - [x] Lab harness — runner, docker wrapper, CLI, report crates
 - [x] `lab-postgres-15` service image with baked-in canonical seed data
+- [x] `lab-mysql-8` service image (baked-in canonical seed data) + mysql cases
+      (`mysql-to-jsonl`, `mysql-to-jsonl-native`, `mysql-to-jsonl-tls-require`,
+      `mysql-to-mysql` atomic + `staged-merge`) and a `mysql:` readiness probe.
+      Covers both auth plugins: `caching_sha2_password` (default / MySQL 9) and
+      legacy `mysql_native_password` (MySQL 5.x) via the `lab_native` user
 - [x] Smoke case `postgres-to-jsonl` (content + type round-trip validation)
 - [x] Volume/throughput cases `postgres-to-null-{5M,15M}`
 - [x] Smoke case `postgres-to-parquet-chunked` (compression + file-splitting validation)
@@ -26,9 +31,8 @@ What's shipped and what's queued next. Shipped items are documented in
 
 ## Planned
 
-- [ ] **More service images** — only `lab-postgres-15` exists today; additional
-      source services would extend lab coverage beyond the postgres source
-      plugin.
+- [ ] **More service images** — `lab-postgres-15` and `lab-mysql-8` exist today;
+      additional source services would extend lab coverage further.
 - [ ] **End-to-end "build an EL" guide** (shared with loadsmith) — author a
       pipeline, build an image with its plugins installed, and validate it with a
       lab case; the natural getting-started for a real pipeline.

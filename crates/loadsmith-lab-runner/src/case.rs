@@ -36,6 +36,10 @@ pub struct ReadinessDef {
     pub timeout_seconds: u64,
     /// Optional postgres-level readiness: wait until a query succeeds.
     pub postgres: Option<PostgresReadiness>,
+    /// Optional mysql-level readiness: wait until a query succeeds.
+    pub mysql: Option<MysqlReadiness>,
+    /// Optional oracle-level readiness: wait until a query succeeds.
+    pub oracle: Option<OracleReadiness>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -45,6 +49,28 @@ pub struct PostgresReadiness {
     pub password: String,
     /// SQL that must return at least one row before the service is considered ready.
     /// Defaults to "SELECT 1" if not set (sufficient when no init data is needed).
+    pub probe_query: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct MysqlReadiness {
+    pub dbname: String,
+    pub user: String,
+    pub password: String,
+    /// SQL that must return at least one row before the service is considered ready.
+    /// Defaults to "SELECT 1" if not set (sufficient when no init data is needed).
+    pub probe_query: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct OracleReadiness {
+    /// Oracle service name (e.g. `FREEPDB1`).
+    pub service_name: String,
+    pub user: String,
+    pub password: String,
+    /// SQL that must return at least one row before the service is considered ready.
+    /// Defaults to "SELECT 1 FROM dual" if not set. Probe the seeded table to wait
+    /// until the data load (not just the listener) has finished.
     pub probe_query: Option<String>,
 }
 
@@ -69,6 +95,9 @@ pub struct LoadsmithDef {
 
 #[derive(Debug, Deserialize)]
 pub struct VolumeMount {
+    /// Host path to bind-mount. A relative path is resolved against the case
+    /// directory (so a case can ship its own fixtures); an absolute path is used
+    /// as-is. See the mount loop in [`crate::runner`].
     pub host: String,
     pub container: String,
 }

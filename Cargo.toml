@@ -28,3 +28,15 @@ tar            = "0.4"
 tokio-postgres = "0.7"
 toml           = "0.8"
 dirs           = "5"
+# Pure-Rust Oracle driver for the oracle readiness probe. Pinned to our patched
+# fork (one-line tokio-rustls fix) so the lab build stays free of aws-lc-sys /
+# cmake, exactly like the engine + plugins. See [patch.crates-io] below.
+oracle-rs      = "0.1.7"
+
+# oracle-rs 0.1.7 pulls tokio-rustls with default features, which drag in
+# aws-lc-sys (native C + cmake). Our fork disables those default features (the
+# crypto provider is installed by the app instead). Drop this patch once the fix
+# is released upstream — tracked as a standing tech-debt item in the connector
+# work; the same patch is mirrored in loadsmith-canonical-plugins.
+[patch.crates-io]
+oracle-rs = { git = "https://github.com/loadsmith-el/oracle-rs", rev = "87f0adbd8dbd4869b76fb6261a659c7d4f65211a" }

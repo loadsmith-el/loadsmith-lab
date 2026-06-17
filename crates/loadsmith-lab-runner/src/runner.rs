@@ -7,7 +7,7 @@ use loadsmith_lab_docker::{ContainerConfig, DockerClient};
 use loadsmith_lab_report::{print_gutter_line, print_prep_line, CaseResult};
 use uuid::Uuid;
 
-use crate::case::{load_case, Case, Expect, PostgresReadiness};
+use crate::case::{load_case, Case, Expect, MysqlReadiness, OracleReadiness, PostgresReadiness};
 use crate::image::{prepare_plugin_dir, resolve_image, resolve_loadsmith_image};
 use crate::origin::{image_tag, resolve_item, Config, Kind};
 
@@ -142,6 +142,12 @@ async fn run_case_inner(
             if let Some(pg) = &r.postgres {
                 wait_postgres(&probe_host, r.tcp, pg, Duration::from_secs(r.timeout_seconds)).await?;
             }
+            if let Some(my) = &r.mysql {
+                wait_mysql(&probe_host, r.tcp, my, Duration::from_secs(r.timeout_seconds)).await?;
+            }
+            if let Some(or) = &r.oracle {
+                wait_oracle(&probe_host, r.tcp, or, Duration::from_secs(r.timeout_seconds)).await?;
+            }
             print_prep_line(&format!(
                 "{} ready ({:.1}s)",
                 svc.alias,
@@ -188,7 +194,11 @@ async fn run_container(
         format!("{}:/plugins:ro", plugin_dir.display()),
     ];
     for vol in &case.loadsmith.volumes {
-        binds.push(format!("{}:{}", vol.host, vol.container));
+        // A relative `host` is resolved against the case dir so a case can mount
+        // its own committed fixtures (e.g. a wallet) portably; an absolute path
+        // is used as-is (Path::join returns the absolute arg unchanged).
+        let host = case_dir.join(&vol.host);
+        binds.push(format!("{}:{}", host.display(), vol.container));
     }
 
     let mut env: Vec<(String, String)> = case.loadsmith.env.iter().map(|e| {
@@ -321,6 +331,83 @@ async fn wait_postgres(host: &str, port: u16, pg: &PostgresReadiness, timeout: D
 
         if Instant::now() >= deadline {
             anyhow::bail!("timed out waiting for postgres at {host}:{port} to be ready");
+        }
+        sleep(Duration::from_secs(2)).await;
+    }
+}
+
+/// Waits until mysql accepts queries, going beyond just TCP-open.
+/// Probes by attempting a real connection and running the probe query.
+async fn wait_mysql(host: &str, port: u16, my: &MysqlReadiness, timeout: Duration) -> Result<()> {
+    use mysql_async::prelude::Queryable;
+    use tokio::time::{sleep, Instant};
+
+    let deadline = Instant::now() + timeout;
+    let probe = my.probe_query.as_deref().unwrap_or("SELECT 1");
+
+    loop {
+        let opts = mysql_async::OptsBuilder::default()
+            .ip_or_hostname(host.to_string())
+            .tcp_port(port)
+            .user(Some(my.user.clone()))
+            .pass(Some(my.password.clone()))
+            .db_name(Some(my.dbname.clone()));
+
+        match mysql_async::Conn::new(opts).await {
+            Ok(mut conn) => {
+                let result = conn.query::<mysql_async::Row, _>(probe).await;
+                let _ = conn.disconnect().await;
+                match result {
+                    Ok(rows) if !rows.is_empty() || probe == "SELECT 1" => {
+                        tracing::info!("mysql at {host}:{port} is ready");
+                        return Ok(());
+                    }
+                    Ok(_) => tracing::debug!("mysql probe returned 0 rows, waiting for data..."),
+                    Err(e) => tracing::debug!("mysql query probe failed: {e}"),
+                }
+            }
+            Err(e) => tracing::debug!("mysql connect probe failed: {e}"),
+        }
+
+        if Instant::now() >= deadline {
+            anyhow::bail!("timed out waiting for mysql at {host}:{port} to be ready");
+        }
+        sleep(Duration::from_secs(2)).await;
+    }
+}
+
+/// Waits until oracle accepts queries, going beyond just TCP-open.
+/// Probes by attempting a real (plaintext) connection and running the probe
+/// query. Oracle takes a while to open the PDB and load the seed, so this is
+/// what makes the difference between "listener up" and "data ready".
+async fn wait_oracle(host: &str, port: u16, or: &OracleReadiness, timeout: Duration) -> Result<()> {
+    use oracle_rs::{Config, Connection};
+    use tokio::time::{sleep, Instant};
+
+    let deadline = Instant::now() + timeout;
+    let probe = or.probe_query.as_deref().unwrap_or("SELECT 1 FROM dual");
+
+    loop {
+        let config = Config::new(host, port, &or.service_name, &or.user, &or.password)
+            .connect_timeout(Duration::from_secs(3));
+        match Connection::connect_with_config(config).await {
+            Ok(conn) => {
+                let result = conn.query(probe, &[]).await;
+                let _ = conn.close().await;
+                match result {
+                    Ok(r) if !r.rows.is_empty() || probe == "SELECT 1 FROM dual" => {
+                        tracing::info!("oracle at {host}:{port} is ready");
+                        return Ok(());
+                    }
+                    Ok(_) => tracing::debug!("oracle probe returned 0 rows, waiting for data..."),
+                    Err(e) => tracing::debug!("oracle query probe failed: {e}"),
+                }
+            }
+            Err(e) => tracing::debug!("oracle connect probe failed: {e}"),
+        }
+
+        if Instant::now() >= deadline {
+            anyhow::bail!("timed out waiting for oracle at {host}:{port} to be ready");
         }
         sleep(Duration::from_secs(2)).await;
     }
