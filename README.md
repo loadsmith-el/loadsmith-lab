@@ -281,7 +281,7 @@ contract.
 
 The canonical dataset is **100,000 rows of spacecraft telemetry, 34 columns,
 deterministic (`seed = 42`)**, produced by `generate.py` in the
-[`loadsmith-lab-canonical-data`](../loadsmith-lab-canonical-data) repo. Because
+[`loadsmith-lab-canonical-data`](https://github.com/loadsmith-el/loadsmith-lab-canonical-data) repo. Because
 it's a pure function of that stdlib-only generator, **no CSV is committed
 anywhere** — each image's Dockerfile clones the data repo (pinned tag) and runs
 `generate.py` in a build stage, baking the result in.
