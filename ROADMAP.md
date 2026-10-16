@@ -19,6 +19,10 @@ What's shipped and what's queued next. Shipped items are documented in
 - [x] Local-core / published-image run modes (`--loadsmith <binary|project>`,
       `--plugin <binary|project>`, with a mounted plugin cache)
 - [x] `/create-source-image` and `/create-destination-plugin` scaffolds
+- [x] **Leaves nothing behind** — build `rm`/`forcerm`, container volumes removed
+      on teardown, label-scoped pruning of stale resources from interrupted
+      runs, host-user containers (no root-owned leftovers), temp dirs deleted,
+      `--plugin` builds compiled once per run
 - [x] Test bundles — sequenced cases with setup/validate/cleanup hooks that
       run in a per-bundle image (no host deps); example
       `parquet-destination` validates single-file vs. chunked Parquet

@@ -15,6 +15,41 @@ use crate::runner::RunOpts;
 const LOADSMITH_IMAGE: &str = "ghcr.io/loadsmith-el/loadsmith";
 const LOADSMITH_DEFAULT_TAG: &str = "slim";
 
+/// The per-run plugin overlay (cache + `--plugin` overrides). Built once per lab
+/// process — every case in a run shares it — and removed by [`remove_temp_dirs`].
+static OVERLAY: tokio::sync::OnceCell<PathBuf> = tokio::sync::OnceCell::const_new();
+
+/// `uid:gid` of the lab process. Containers that write into host bind mounts run
+/// as this user so everything they create is owned by the host user (root-owned
+/// leftovers in /tmp or the plugin cache can't be removed without sudo).
+pub(crate) fn host_user() -> Option<String> {
+    #[cfg(unix)]
+    {
+        // SAFETY: getuid/getgid have no preconditions and cannot fail.
+        let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
+        Some(format!("{uid}:{gid}"))
+    }
+    #[cfg(not(unix))]
+    {
+        None
+    }
+}
+
+fn overlay_dir() -> PathBuf {
+    std::env::temp_dir().join(format!("loadsmith-lab-plugins-{}", std::process::id()))
+}
+
+fn build_dir() -> PathBuf {
+    std::env::temp_dir().join(format!("loadsmith-lab-build-{}", std::process::id()))
+}
+
+/// Removes this process's temp dirs (plugin overlay, plugin build target). Call
+/// once at the end of a lab run.
+pub fn remove_temp_dirs() {
+    let _ = std::fs::remove_dir_all(overlay_dir());
+    let _ = std::fs::remove_dir_all(build_dir());
+}
+
 /// Prepares the host plugin directory mounted into the loadsmith container.
 ///
 /// Plugins are no longer bundled in the loadsmith image — they live in
@@ -53,6 +88,7 @@ pub async fn prepare_plugin_dir(
                     "/plugins".into(),
                 ],
                 docker_args: vec![],
+                user: host_user(),
             })
             .await?;
         let code = docker.wait_container(&id).await?;
@@ -64,13 +100,21 @@ pub async fn prepare_plugin_dir(
         return Ok(base);
     }
 
-    // Each override is a binary or a project dir (built in-container); resolve to
-    // a flat list of binaries, then layer them over the cache in a per-run overlay.
+    // The overrides are the same for every case of a run: build them once.
+    OVERLAY
+        .get_or_try_init(|| build_overlay(docker, &base, overrides))
+        .await
+        .cloned()
+}
+
+/// Resolves each override to binaries (building project dirs in-container) and
+/// layers them over the cache in this process's overlay dir.
+async fn build_overlay(docker: &DockerClient, base: &Path, overrides: &[PathBuf]) -> Result<PathBuf> {
     let binaries = resolve_override_binaries(docker, overrides).await?;
-    let overlay = std::env::temp_dir().join(format!("loadsmith-lab-plugins-{}", std::process::id()));
+    let overlay = overlay_dir();
     let _ = std::fs::remove_dir_all(&overlay);
     std::fs::create_dir_all(&overlay)?;
-    for entry in std::fs::read_dir(&base)? {
+    for entry in std::fs::read_dir(base)? {
         let entry = entry?;
         std::fs::copy(entry.path(), overlay.join(entry.file_name()))?;
     }
@@ -87,6 +131,8 @@ pub async fn prepare_plugin_dir(
         }
         tracing::info!("overriding plugin with local {}", name.to_string_lossy());
     }
+    // The binaries are copied into the overlay; the build target (~1GB) is done.
+    let _ = std::fs::remove_dir_all(build_dir());
     Ok(overlay)
 }
 
@@ -124,9 +170,14 @@ async fn build_plugin_project(docker: &DockerClient, path: &Path) -> Result<Vec<
         format!("/src/{}/Cargo.toml", rel.display())
     };
 
-    let target = std::env::temp_dir().join(format!("loadsmith-lab-build-{}", std::process::id()));
+    let target = build_dir();
     let _ = std::fs::remove_dir_all(&target);
     std::fs::create_dir_all(&target)?;
+    // Running as the host user, cargo can't write the image's root-owned
+    // CARGO_HOME; give it a persistent user-owned one (also caches the registry
+    // across runs).
+    let cargo_home = lab_cache_dir()?.join("cargo-home");
+    std::fs::create_dir_all(&cargo_home)?;
 
     // run_container won't pull on its own (unlike build); ensure the toolchain
     // image is present.
@@ -140,10 +191,14 @@ async fn build_plugin_project(docker: &DockerClient, path: &Path) -> Result<Vec<
             image: "rust:bookworm".to_string(),
             hostname: None,
             network: None,
-            env: vec![("CARGO_TARGET_DIR".to_string(), "/target".to_string())],
+            env: vec![
+                ("CARGO_TARGET_DIR".to_string(), "/target".to_string()),
+                ("CARGO_HOME".to_string(), "/cargo-home".to_string()),
+            ],
             binds: vec![
                 format!("{}:/src:ro", root.display()),
                 format!("{}:/target", target.display()),
+                format!("{}:/cargo-home", cargo_home.display()),
             ],
             publish_ports: vec![],
             cmd: vec![
@@ -154,6 +209,7 @@ async fn build_plugin_project(docker: &DockerClient, path: &Path) -> Result<Vec<
                 manifest,
             ],
             docker_args: vec![],
+            user: host_user(),
         })
         .await?;
     let code = docker.wait_container(&id).await?;
@@ -216,9 +272,13 @@ fn is_executable(path: &Path) -> bool {
     }
 }
 
-fn plugin_cache_dir() -> Result<PathBuf> {
+fn lab_cache_dir() -> Result<PathBuf> {
     let home = std::env::var("HOME").map_err(|_| anyhow::anyhow!("HOME not set"))?;
-    Ok(PathBuf::from(home).join(".cache/loadsmith-lab/plugins"))
+    Ok(PathBuf::from(home).join(".cache/loadsmith-lab"))
+}
+
+fn plugin_cache_dir() -> Result<PathBuf> {
+    Ok(lab_cache_dir()?.join("plugins"))
 }
 
 fn dir_is_empty(dir: &Path) -> Result<bool> {

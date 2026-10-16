@@ -7,7 +7,9 @@ use loadsmith_lab_report::{
     print_banner, print_bundle_summary, print_case_header, print_result, print_summary,
 };
 use loadsmith_lab_runner::origin::{self, Config};
-use loadsmith_lab_runner::{run_bundle, run_case, Kind, RunOpts};
+use loadsmith_lab_runner::{
+    prune_stale_resources, remove_temp_dirs, run_bundle, run_case, Kind, RunOpts,
+};
 
 #[derive(Parser)]
 #[command(
@@ -340,6 +342,7 @@ async fn cmd_run(args: RunArgs, cfg: &Config, color: bool, log_level: String) ->
 
     let mode = if args.loadsmith.is_some() { "local loadsmith" } else { "remote image" };
     print_banner(env!("CARGO_PKG_VERSION"), mode);
+    prune_stale_resources().await;
 
     let mut results = vec![];
     for (name, case_path) in &cases {
@@ -348,6 +351,8 @@ async fn cmd_run(args: RunArgs, cfg: &Config, color: bool, log_level: String) ->
         match run_case(case_path, &opts).await {
             Ok(r) => {
                 print_result(&r);
+                // Validated already — drop the temp output dir.
+                let _ = std::fs::remove_dir_all(&r.output_dir);
                 results.push(r);
             }
             Err(e) => {
@@ -365,6 +370,7 @@ async fn cmd_run(args: RunArgs, cfg: &Config, color: bool, log_level: String) ->
     }
 
     print_summary(&results);
+    remove_temp_dirs();
     Ok(results.iter().all(|r| r.passed))
 }
 
@@ -402,6 +408,7 @@ async fn cmd_bundle_run(
 
     let mode = if args.loadsmith.is_some() { "local loadsmith" } else { "remote image" };
     print_banner(env!("CARGO_PKG_VERSION"), mode);
+    prune_stale_resources().await;
 
     let mut all_passed = true;
     for (name, bundle_path) in &bundles {
@@ -419,6 +426,7 @@ async fn cmd_bundle_run(
         }
     }
 
+    remove_temp_dirs();
     Ok(all_passed)
 }
 

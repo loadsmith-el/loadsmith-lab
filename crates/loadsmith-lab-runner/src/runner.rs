@@ -35,6 +35,17 @@ pub struct RunOpts {
     pub plugin_overrides: Vec<PathBuf>,
 }
 
+/// Removes lab containers/networks left behind by earlier runs that were
+/// interrupted (Ctrl-C, crash) before their own cleanup. Only resources older
+/// than an hour are touched, so a concurrent run is never affected. Best effort.
+pub async fn prune_stale_resources() {
+    if let Ok(docker) = DockerClient::new().await {
+        if let Err(e) = docker.prune_stale("1h").await {
+            tracing::debug!("pruning stale lab resources failed: {e}");
+        }
+    }
+}
+
 /// Runs the case at `case_path` and returns the result.
 ///
 /// Prep lines and loadsmith output are streamed to stdout in real time so the
@@ -126,6 +137,7 @@ async fn run_case_inner(
             publish_ports: vec![],
             cmd: vec![],
             docker_args: vec![],
+            user: None,
         }).await?;
 
         svc_ids.push(id.clone());
@@ -228,6 +240,9 @@ async fn run_container(
         publish_ports: vec![],
         cmd,
         docker_args: case.loadsmith.docker_args.clone(),
+        // Writes /output (a host bind mount): run as the host user so the
+        // outputs aren't root-owned and can be cleaned up.
+        user: crate::image::host_user(),
     }).await?;
 
     // Stream the container's combined output through the gutter live, and keep

@@ -53,6 +53,13 @@ To test a plugin you're developing, override it with `--plugin <path>` (repeatab
 - **workspace root** (e.g. `../loadsmith-canonical-plugins`) → builds every member
   and overlays them all.
 
+Overrides are resolved **once per lab invocation**: every case of a `run --all`
+or bundle shares the same overlay (a temp dir), so a workspace is compiled once,
+not once per case. The build runs as the host user with a persistent
+`CARGO_HOME` (`~/.cache/loadsmith-lab/cargo-home`, caches the crate registry);
+its temp target dir is deleted as soon as the binaries are copied into the
+overlay, and the overlay is deleted at the end of the run.
+
 ```bash
 # dev core + a locally-built jsonl, everything else from the cache:
 ./target/debug/loadsmith-lab run --loadsmith ../loadsmith \
@@ -72,3 +79,5 @@ The lab:
    (the image's `ENTRYPOINT` is `loadsmith`), propagating `NO_COLOR` when needed.
 6. Streams the container's combined stdout+stderr through the report gutter in real
    time, and validates the output file under the host side of the `/output` mount.
+   The container runs as the host user, so outputs aren't root-owned; the output
+   dir is deleted once the case is validated (after the hooks, for bundles).

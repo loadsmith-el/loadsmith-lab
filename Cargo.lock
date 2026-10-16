@@ -1181,6 +1181,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dirs",
+ "libc",
  "loadsmith-lab-docker",
  "loadsmith-lab-report",
  "mysql_async",

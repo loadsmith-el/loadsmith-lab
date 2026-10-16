@@ -8,6 +8,10 @@ pub struct DockerClient {
     inner: Docker,
 }
 
+/// Label stamped on every container and network the lab creates, so leftovers
+/// from interrupted runs can be found and pruned (see [`DockerClient::prune_stale`]).
+pub const LAB_LABEL: &str = "loadsmith-lab";
+
 #[derive(Debug, Default)]
 pub struct ContainerConfig {
     pub image: String,
@@ -20,6 +24,10 @@ pub struct ContainerConfig {
     /// CMD/ENTRYPOINT; non-empty overrides the CMD (appended to ENTRYPOINT).
     pub cmd: Vec<String>,
     pub docker_args: Vec<String>,
+    /// `uid:gid` to run as. Set it for containers that write into host bind
+    /// mounts, so the files they create belong to the host user (not root) and
+    /// can be cleaned up without sudo.
+    pub user: Option<String>,
 }
 
 impl DockerClient {
@@ -58,9 +66,16 @@ impl DockerClient {
         use bollard::image::BuildImageOptions;
         use futures_util::TryStreamExt;
 
-        let opts = BuildImageOptions { t: tag, ..Default::default() };
+        // The classic builder keeps every step's intermediate container unless
+        // asked not to (bollard sends rm=false by default) — they pile up fast.
+        let opts = BuildImageOptions { t: tag, rm: true, forcerm: true, ..Default::default() };
+        // It also leaves each earlier stage of a multi-stage build (e.g. the
+        // images' `data` stage) as an untagged image. Snapshot the dangling set
+        // first so only the ones this build creates are removed afterwards.
+        let dangling_before = self.dangling_images().await.unwrap_or_default();
         let body = bytes::Bytes::from(context_tar);
         let mut stream = self.inner.build_image(opts, None, Some(body));
+        let mut result = Ok(());
         while let Some(info) = stream.try_next().await? {
             if let Some(stream) = info.stream {
                 let msg = stream.trim_end();
@@ -69,18 +84,39 @@ impl DockerClient {
                 }
             }
             if let Some(err) = info.error {
-                anyhow::bail!("docker build error: {err}");
+                result = Err(anyhow::anyhow!("docker build error: {err}"));
+                break;
             }
         }
-        Ok(())
+        for id in self.dangling_images().await.unwrap_or_default() {
+            if !dangling_before.contains(&id) {
+                let _ = self.inner.remove_image(&id, None, None).await;
+            }
+        }
+        result
+    }
+
+    /// IDs of untagged ("dangling") images.
+    async fn dangling_images(&self) -> Result<std::collections::HashSet<String>> {
+        use bollard::image::ListImagesOptions;
+        use std::collections::HashMap;
+
+        let filters = HashMap::from([("dangling", vec!["true"])]);
+        let images = self
+            .inner
+            .list_images(Some(ListImagesOptions { filters, ..Default::default() }))
+            .await?;
+        Ok(images.into_iter().map(|i| i.id).collect())
     }
 
     pub async fn create_network(&self, name: &str) -> Result<String> {
         use bollard::network::CreateNetworkOptions;
+        use std::collections::HashMap;
 
         let resp = self.inner.create_network(CreateNetworkOptions {
             name,
             driver: "bridge",
+            labels: HashMap::from([(LAB_LABEL, "true")]),
             ..Default::default()
         }).await?;
         Ok(resp.id.unwrap_or_else(|| name.to_string()))
@@ -128,6 +164,8 @@ impl DockerClient {
                 exposed_ports.iter().map(|(k, v)| (k.as_str(), v.clone())).collect()
             )},
             host_config: Some(host_config),
+            user: config.user.as_deref(),
+            labels: Some(HashMap::from([(LAB_LABEL, "true")])),
             ..Default::default()
         };
 
@@ -176,7 +214,29 @@ impl DockerClient {
         use bollard::container::RemoveContainerOptions;
 
         let _ = self.inner.stop_container(id, None).await;
-        self.inner.remove_container(id, Some(RemoveContainerOptions { force: true, ..Default::default() })).await?;
+        // `v` also drops the container's anonymous volumes (database images
+        // declare a VOLUME for their data dir) — otherwise every run leaks one.
+        self.inner
+            .remove_container(id, Some(RemoveContainerOptions { force: true, v: true, ..Default::default() }))
+            .await?;
+        Ok(())
+    }
+
+    /// Removes stopped lab containers and unused lab networks older than
+    /// `older_than` (a Go duration such as `1h`) — leftovers from runs that were
+    /// interrupted before their own cleanup. The age guard keeps it from touching
+    /// a concurrent run that is still starting up.
+    pub async fn prune_stale(&self, older_than: &str) -> Result<()> {
+        use bollard::container::PruneContainersOptions;
+        use bollard::network::PruneNetworksOptions;
+        use std::collections::HashMap;
+
+        let label = format!("{LAB_LABEL}=true");
+        let filters = HashMap::from([("label", vec![label.as_str()]), ("until", vec![older_than])]);
+        self.inner
+            .prune_containers(Some(PruneContainersOptions { filters: filters.clone() }))
+            .await?;
+        self.inner.prune_networks(Some(PruneNetworksOptions { filters })).await?;
         Ok(())
     }
 

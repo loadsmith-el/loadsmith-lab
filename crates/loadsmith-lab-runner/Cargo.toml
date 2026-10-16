@@ -23,5 +23,7 @@ mysql_async = { version = "0.37", default-features = false, features = ["minimal
 oracle-rs  = { workspace = true }
 toml       = { workspace = true }
 dirs       = { workspace = true }
+# getuid/getgid: containers that write host bind mounts run as the host user.
+libc       = "0.2"
 loadsmith-lab-docker = { path = "../loadsmith-lab-docker" }
 loadsmith-lab-report = { path = "../loadsmith-lab-report" }

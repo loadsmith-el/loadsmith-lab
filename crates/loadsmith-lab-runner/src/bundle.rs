@@ -217,6 +217,7 @@ async fn run_hook(
             publish_ports: vec![],
             cmd,
             docker_args: vec![],
+            user: None,
         })
         .await?;
 

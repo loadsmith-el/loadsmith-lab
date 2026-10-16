@@ -42,8 +42,29 @@ For each service declared in `case.yaml`:
    - Postgres query (optional): connect to the database and run a probe query
      until it returns at least one row
 
-4. **Teardown** — `docker stop` then `docker rm --force`. This runs unconditionally
-   after the case finishes.
+4. **Teardown** — `docker stop` then `docker rm --force -v`. This runs
+   unconditionally after the case finishes; `-v` also removes the container's
+   anonymous volumes (database images declare a `VOLUME` for their data dir, so
+   without it every run would leak one).
+
+## Leaving nothing behind
+
+Everything the lab creates is cleaned up, even across interrupted runs:
+
+- Every container and network carries the label `loadsmith-lab=true`. At the
+  start of each `run`/`bundle run`, `DockerClient::prune_stale("1h")` removes
+  *stopped* lab containers and *unused* lab networks older than an hour —
+  leftovers of a run killed before its own teardown. The age guard keeps it from
+  touching a concurrent run.
+- Image builds pass `rm`/`forcerm`, so no intermediate container survives a build
+  (bollard's defaults would keep one per Dockerfile step), and the untagged images
+  the classic builder leaves for earlier stages of a multi-stage build (the
+  `data` stage) are removed — only the ones that build created.
+- Containers that write into host bind mounts (the loadsmith run, `plugin install`
+  into the cache, `--plugin` builds) run as the host `uid:gid`, so nothing the lab
+  leaves on the host is root-owned.
+- Temp dirs (`/output` per case, the `--plugin` overlay and build target) are
+  deleted at the end of the case / run.
 
 ## Image naming
 
@@ -139,7 +160,8 @@ impl DockerClient {
     // Containers
     pub async fn run_container(&self, config: ContainerConfig) -> Result<String>;
     pub async fn wait_container(&self, id: &str) -> Result<i64>;
-    pub async fn stop_and_remove(&self, id: &str) -> Result<()>;
+    pub async fn stop_and_remove(&self, id: &str) -> Result<()>;   // force + volumes
+    pub async fn prune_stale(&self, older_than: &str) -> Result<()>; // label-scoped
     pub async fn container_logs(&self, id: &str) -> Result<String>;
     pub async fn stream_logs<F: FnMut(&str)>(&self, id: &str, on_line: F) -> Result<String>;
     pub async fn container_ip(&self, id: &str, net_name: &str) -> Result<String>;
@@ -164,6 +186,7 @@ pub struct ContainerConfig {
     pub publish_ports: Vec<(u16, u16)>, // (host_port, container_port)
     pub cmd: Vec<String>,               // overrides the image CMD (appended to ENTRYPOINT)
     pub docker_args: Vec<String>,
+    pub user: Option<String>,           // "uid:gid" — set when writing host bind mounts
 }
 ```
 
