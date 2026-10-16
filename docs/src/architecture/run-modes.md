@@ -36,7 +36,13 @@ clear error.
 ```bash
 ./target/debug/loadsmith-lab run --select catalog/postgres-to-jsonl                    # ghcr.io/loadsmith-el/loadsmith:slim
 ./target/debug/loadsmith-lab run --tag v0.1.0-slim --select catalog/postgres-to-jsonl  # pin a version
+./target/debug/loadsmith-lab run --tag static --select catalog/postgres-to-jsonl       # another image flavor
 ```
+
+`--tag` takes any published tag, so it also selects the image flavor (`static`,
+`static-debug`, `slim`, `bundled`, rolling or versioned like `v0.2.0-static`).
+The lab mounts its plugin cache at `/plugins` in every flavor; the cached
+plugins are static binaries, so they run in the distroless ones too.
 
 ## Plugins — a mounted cache, with `--plugin` overrides
 

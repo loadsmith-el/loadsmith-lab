@@ -331,7 +331,8 @@ fn dir_is_empty(dir: &Path) -> Result<bool> {
 ///
 /// - `--loadsmith <dir>` (a project): build `loadsmith:local` from its Dockerfile.
 /// - `--loadsmith <file>` (a binary): wrap it in a minimal image (the binary must
-///   be runnable in `debian:bookworm-slim` — linux, glibc ≤ the base's).
+///   be runnable in `debian:bookworm-slim`: a static musl release binary always
+///   is; a glibc build needs glibc ≤ the base's).
 /// - neither: pull the canonical published image `ghcr.io/loadsmith-el/loadsmith`
 ///   — `--tag <t>` picks the version, else a case's explicit `loadsmith.image`,
 ///   else the rolling `:slim` variant. Pulled if not already present.

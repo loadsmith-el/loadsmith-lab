@@ -70,8 +70,8 @@ struct BundleRunArgs {
     #[arg(long)]
     all: bool,
 
-    /// Loadsmith core to run: a binary, or a Rust project dir to build (in a
-    /// rust:bookworm container). Without it, pulls the canonical published image
+    /// Loadsmith core to run: a binary, or a Rust project dir to build (with its
+    /// own Dockerfile). Without it, pulls the canonical published image
     /// ghcr.io/loadsmith-el/loadsmith (see --tag).
     #[arg(long, value_name = "PATH")]
     loadsmith: Option<PathBuf>,
@@ -110,8 +110,8 @@ struct RunArgs {
     #[arg(long)]
     all: bool,
 
-    /// Loadsmith core to run: a binary, or a Rust project dir to build (in a
-    /// rust:bookworm container). Without it, pulls the canonical published image
+    /// Loadsmith core to run: a binary, or a Rust project dir to build (with its
+    /// own Dockerfile). Without it, pulls the canonical published image
     /// ghcr.io/loadsmith-el/loadsmith (see --tag).
     #[arg(long, value_name = "PATH")]
     loadsmith: Option<PathBuf>,

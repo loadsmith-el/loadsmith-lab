@@ -34,7 +34,7 @@ loadsmith-lab run --loadsmith ../loadsmith --all --cases-dir /path/to/cases
 | `--all` | — | Run all available cases (installed + local origins). Mutually exclusive with `--select` |
 | `--loadsmith <path>` | — | Run a local loadsmith core: a binary (wrapped in a minimal image) or a project dir (built from its Dockerfile). Without it, the canonical published image `ghcr.io/loadsmith-el/loadsmith` is pulled |
 | `--plugin <path>` | — | Override a cached canonical plugin with a local one: a binary, a plugin crate, or a workspace root (built as static musl binaries in a `rust:1-alpine` container, like a release). Repeatable |
-| `--tag <tag>` | — | Version tag of the canonical image `ghcr.io/loadsmith-el/loadsmith:<tag>` (e.g. `v0.1.0-slim`; default `slim`). Ignored when `--loadsmith` is given |
+| `--tag <tag>` | — | Version tag of the canonical image `ghcr.io/loadsmith-el/loadsmith:<tag>` (e.g. `v0.1.0-slim`; any flavor, e.g. `static`; default `slim`). Ignored when `--loadsmith` is given |
 | `--cases-dir <path>` | — | Ad-hoc: resolve cases directly from this dir (bare `<name>` subdirs), bypassing origins |
 
 **Exit codes:**
@@ -75,7 +75,7 @@ loadsmith-lab bundle run --loadsmith ../loadsmith --all
 | `--all` | — | Run all available bundles. Mutually exclusive with `--select` |
 | `--loadsmith <path>` | — | Run a local loadsmith core: a binary (wrapped in a minimal image) or a project dir (built from its Dockerfile). Without it, the canonical published image `ghcr.io/loadsmith-el/loadsmith` is pulled |
 | `--plugin <path>` | — | Override a cached canonical plugin with a local one: a binary, a plugin crate, or a workspace root (built as static musl binaries in a `rust:1-alpine` container, like a release). Repeatable |
-| `--tag <tag>` | — | Version tag of the canonical image `ghcr.io/loadsmith-el/loadsmith:<tag>` (e.g. `v0.1.0-slim`; default `slim`). Ignored when `--loadsmith` is given |
+| `--tag <tag>` | — | Version tag of the canonical image `ghcr.io/loadsmith-el/loadsmith:<tag>` (e.g. `v0.1.0-slim`; any flavor, e.g. `static`; default `slim`). Ignored when `--loadsmith` is given |
 | `--bundles-dir <path>` | — | Ad-hoc: resolve bundles directly from this dir, bypassing origins |
 
 A bundle's entries reference their cases as `<origin>/<name>` too, resolved the
