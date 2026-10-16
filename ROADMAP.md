@@ -22,7 +22,11 @@ What's shipped and what's queued next. Shipped items are documented in
 - [x] **Leaves nothing behind** — build `rm`/`forcerm`, container volumes removed
       on teardown, label-scoped pruning of stale resources from interrupted
       runs, host-user containers (no root-owned leftovers), temp dirs deleted,
-      `--plugin` builds compiled once per run
+      `--plugin` builds and the `--loadsmith` core built once per run (a failed
+      build is reported with cargo's own error, once)
+- [x] **Strict expectations** — `rows_read`/`rows_written` are actually asserted
+      (they were parsed but never checked), and `status: success` also requires
+      the summary's `Status: success`
 - [x] Test bundles — sequenced cases with setup/validate/cleanup hooks that
       run in a per-bundle image (no host deps); example
       `parquet-destination` validates single-file vs. chunked Parquet

@@ -86,6 +86,9 @@ expect:
 
 ## Validation behavior
 
+- `expect.status: success` requires **both** a zero exit code and, when the summary
+  box is printed, `Status: success` (older cores exited 0 even when the summary
+  said `error`). `status: error` passes when either signals failure.
 - `expect.rows_read` and `expect.rows_written` are parsed from the loadsmith summary
   printed to stdout. The parser is case-insensitive and handles comma-formatted
   numbers (`100,000` → `100000`).

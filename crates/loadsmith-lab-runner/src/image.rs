@@ -17,7 +17,14 @@ const LOADSMITH_DEFAULT_TAG: &str = "slim";
 
 /// The per-run plugin overlay (cache + `--plugin` overrides). Built once per lab
 /// process — every case in a run shares it — and removed by [`remove_temp_dirs`].
-static OVERLAY: tokio::sync::OnceCell<PathBuf> = tokio::sync::OnceCell::const_new();
+/// A failed build is memoized too (as its message): every case of the run would
+/// fail the same way, so retrying per case only multiplies the wait.
+static OVERLAY: tokio::sync::OnceCell<Result<PathBuf, String>> = tokio::sync::OnceCell::const_new();
+
+/// The `--loadsmith <dir|binary>` core image, built once per lab process: the
+/// source can't change mid-run, and re-sending the build context per case cost
+/// ~40s each even on a full cache hit.
+static LOCAL_CORE: tokio::sync::OnceCell<Result<String, String>> = tokio::sync::OnceCell::const_new();
 
 /// `uid:gid` of the lab process. Containers that write into host bind mounts run
 /// as this user so everything they create is owned by the host user (root-owned
@@ -102,9 +109,10 @@ pub async fn prepare_plugin_dir(
 
     // The overrides are the same for every case of a run: build them once.
     OVERLAY
-        .get_or_try_init(|| build_overlay(docker, &base, overrides))
+        .get_or_init(|| async { build_overlay(docker, &base, overrides).await.map_err(|e| format!("{e:#}")) })
         .await
-        .cloned()
+        .clone()
+        .map_err(anyhow::Error::msg)
 }
 
 /// Resolves each override to binaries (building project dirs in-container) and
@@ -213,8 +221,20 @@ async fn build_plugin_project(docker: &DockerClient, path: &Path) -> Result<Vec<
         })
         .await?;
     let code = docker.wait_container(&id).await?;
+    // On failure, surface cargo's own error — otherwise all you get is "exit 101".
+    let log_tail = if code == 0 {
+        String::new()
+    } else {
+        let logs = docker.container_logs(&id).await.unwrap_or_default();
+        let lines: Vec<&str> = logs.lines().collect();
+        lines[lines.len().saturating_sub(15)..].join("\n")
+    };
     let _ = docker.stop_and_remove(&id).await;
-    anyhow::ensure!(code == 0, "building plugin project {} failed (exit {code})", path.display());
+    anyhow::ensure!(
+        code == 0,
+        "building plugin project {} failed (exit {code}):\n{log_tail}",
+        path.display()
+    );
 
     let release = target.join("release");
     let mut bins = Vec::new();
@@ -299,18 +319,11 @@ pub async fn resolve_loadsmith_image(
     case: &Case,
 ) -> Result<String> {
     match &opts.loadsmith_source {
-        Some(path) if path.is_dir() => {
-            let src = path.canonicalize().unwrap_or_else(|_| path.clone());
-            tracing::debug!("building loadsmith:local from project {}", src.display());
-            let tar = build_source_context_tar(&src, &["target", ".git", "docs", "definitions"])?;
-            docker.build_image(tar, "loadsmith:local").await?;
-            Ok("loadsmith:local".to_string())
-        }
-        Some(path) => {
-            tracing::debug!("wrapping loadsmith binary {} in an image", path.display());
-            wrap_binary_image(docker, path, "loadsmith:local").await?;
-            Ok("loadsmith:local".to_string())
-        }
+        Some(path) => LOCAL_CORE
+            .get_or_init(|| async { build_local_core(docker, path).await.map_err(|e| format!("{e:#}")) })
+            .await
+            .clone()
+            .map_err(anyhow::Error::msg),
         None => {
             let image = match (&opts.loadsmith_tag, &case.loadsmith.image) {
                 (Some(tag), _) => format!("{LOADSMITH_IMAGE}:{tag}"),
@@ -330,6 +343,20 @@ pub async fn resolve_loadsmith_image(
             }
         }
     }
+}
+
+/// Builds `loadsmith:local` from a project dir (its Dockerfile) or by wrapping a binary.
+async fn build_local_core(docker: &DockerClient, path: &Path) -> Result<String> {
+    if path.is_dir() {
+        let src = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        tracing::debug!("building loadsmith:local from project {}", src.display());
+        let tar = build_source_context_tar(&src, &["target", ".git", "docs", "definitions"])?;
+        docker.build_image(tar, "loadsmith:local").await?;
+    } else {
+        tracing::debug!("wrapping loadsmith binary {} in an image", path.display());
+        wrap_binary_image(docker, path, "loadsmith:local").await?;
+    }
+    Ok("loadsmith:local".to_string())
 }
 
 /// Wraps a prebuilt loadsmith binary in a minimal runnable image. ca-certs are

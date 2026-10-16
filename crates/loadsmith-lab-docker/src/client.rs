@@ -88,9 +88,19 @@ impl DockerClient {
                 break;
             }
         }
-        for id in self.dangling_images().await.unwrap_or_default() {
-            if !dangling_before.contains(&id) {
-                let _ = self.inner.remove_image(&id, None, None).await;
+        // Stage images chain into each other and a parent can't go before its
+        // children, so sweep repeatedly until a pass removes nothing.
+        loop {
+            let mut removed = false;
+            for id in self.dangling_images().await.unwrap_or_default() {
+                if !dangling_before.contains(&id)
+                    && self.inner.remove_image(&id, None, None).await.is_ok()
+                {
+                    removed = true;
+                }
+            }
+            if !removed {
+                break;
             }
         }
         result

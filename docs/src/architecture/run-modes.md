@@ -53,7 +53,8 @@ To test a plugin you're developing, override it with `--plugin <path>` (repeatab
 - **workspace root** (e.g. `../loadsmith-canonical-plugins`) → builds every member
   and overlays them all.
 
-Overrides are resolved **once per lab invocation**: every case of a `run --all`
+Like the `--loadsmith` core image (built or wrapped once per invocation, not per
+case), overrides are resolved **once per lab invocation**: every case of a `run --all`
 or bundle shares the same overlay (a temp dir), so a workspace is compiled once,
 not once per case. The build runs as the host user with a persistent
 `CARGO_HOME` (`~/.cache/loadsmith-lab/cargo-home`, caches the crate registry);

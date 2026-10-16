@@ -62,8 +62,13 @@ pub async fn run_case(case_path: &Path, opts: &RunOpts) -> Result<CaseResult> {
 
     docker.create_network(&net_name).await?;
 
+    // Created up front so a failure anywhere below can still remove it.
+    let output_dir = std::env::temp_dir().join(format!("ls-lab-{}", Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&output_dir)?;
+
     // Run the fallible core, then always clean up regardless of outcome.
-    let inner = run_case_inner(&docker, &case, opts, case_dir, &net_name, &mut svc_ids).await;
+    let inner =
+        run_case_inner(&docker, &case, opts, case_dir, &net_name, &output_dir, &mut svc_ids).await;
 
     // Primary cleanup: by container ID (tracked as containers start).
     for id in &svc_ids {
@@ -75,11 +80,25 @@ pub async fn run_case(case_path: &Path, opts: &RunOpts) -> Result<CaseResult> {
     }
     let _ = docker.remove_network(&net_name).await;
 
-    let (exit_code, loadsmith_stdout, output_dir) = inner?;
+    let (exit_code, loadsmith_stdout) = match inner {
+        Ok(v) => v,
+        Err(e) => {
+            // On success the caller drops it after validation (bundle hooks
+            // still need it); on failure nobody else knows it exists.
+            let _ = std::fs::remove_dir_all(&output_dir);
+            return Err(e);
+        }
+    };
 
     let duration = start.elapsed();
-    let failures = validate_expects(&case.expect, exit_code, &output_dir);
     let (rows_read, rows_written) = parse_rows_from_stdout(&loadsmith_stdout);
+    let observed = Observed {
+        exit_code,
+        summary_status: parse_summary_status(&loadsmith_stdout),
+        rows_read,
+        rows_written,
+    };
+    let failures = validate_expects(&case.expect, &observed, &output_dir);
 
     Ok(CaseResult {
         name: case.case.name.clone(),
@@ -105,8 +124,9 @@ async fn run_case_inner(
     opts: &RunOpts,
     case_dir: &Path,
     net_name: &str,
+    output_dir: &Path,
     svc_ids: &mut Vec<String>,
-) -> Result<(i64, String, PathBuf)> {
+) -> Result<(i64, String)> {
     for svc in &case.services {
         // The case references its service image as an origin item
         // (`<origin>/<name>`); resolve the build context and derive the local
@@ -168,13 +188,7 @@ async fn run_case_inner(
         }
     }
 
-    let output_dir = std::env::temp_dir().join(format!("ls-lab-{}", Uuid::new_v4().simple()));
-    std::fs::create_dir_all(&output_dir)?;
-
-    let (exit_code, loadsmith_stdout) =
-        run_container(docker, case, opts, case_dir, net_name, &output_dir).await?;
-
-    Ok((exit_code, loadsmith_stdout, output_dir))
+    run_container(docker, case, opts, case_dir, net_name, output_dir).await
 }
 
 /// Runs loadsmith in a container on the case network and returns
@@ -258,16 +272,42 @@ async fn run_container(
     Ok((exit_code, logs))
 }
 
-fn validate_expects(expect: &Expect, exit_code: i64, output_dir: &Path) -> Vec<String> {
+/// What a loadsmith run reported, as checked against a case's `expect:`.
+struct Observed {
+    exit_code: i64,
+    /// The summary box's `Status:` value (`success`/`error`), when printed.
+    summary_status: Option<String>,
+    rows_read: Option<u64>,
+    rows_written: Option<u64>,
+}
+
+fn validate_expects(expect: &Expect, observed: &Observed, output_dir: &Path) -> Vec<String> {
     let mut failures = Vec::new();
 
+    // Success needs BOTH a zero exit and (when printed) a `Status: success`
+    // summary — older cores exited 0 even when the pipeline ended in error.
     let expected_success = expect.status == "success";
-    let actual_success = exit_code == 0;
+    let actual_success = observed.exit_code == 0
+        && observed.summary_status.as_deref().is_none_or(|s| s == "success");
     if expected_success != actual_success {
         failures.push(format!(
-            "status: expected '{}', got exit code {}",
-            expect.status, exit_code
+            "status: expected '{}', got exit code {} (summary status: {})",
+            expect.status,
+            observed.exit_code,
+            observed.summary_status.as_deref().unwrap_or("none")
         ));
+    }
+
+    for (label, want, got) in [
+        ("rows_read", expect.rows_read, observed.rows_read),
+        ("rows_written", expect.rows_written, observed.rows_written),
+    ] {
+        if let Some(want) = want {
+            if got != Some(want) {
+                let got = got.map_or("none".to_string(), |g| g.to_string());
+                failures.push(format!("{label}: expected {want}, got {got}"));
+            }
+        }
     }
 
     if let Some(out) = &expect.output {
@@ -298,6 +338,14 @@ fn count_lines(path: &Path) -> Result<u64> {
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
     Ok(reader.lines().count() as u64)
+}
+
+/// The summary box's `Status:` line (e.g. `Status:       error`), lower-cased.
+fn parse_summary_status(stdout: &str) -> Option<String> {
+    stdout.lines().find_map(|l| {
+        let (_, value) = l.split_once("Status:")?;
+        value.split_whitespace().next().map(str::to_ascii_lowercase)
+    })
 }
 
 fn parse_rows_from_stdout(stdout: &str) -> (Option<u64>, Option<u64>) {
@@ -425,5 +473,60 @@ async fn wait_oracle(host: &str, port: u16, or: &OracleReadiness, timeout: Durat
             anyhow::bail!("timed out waiting for oracle at {host}:{port} to be ready");
         }
         sleep(Duration::from_secs(2)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SUMMARY_ERROR: &str = "\
+Pipeline:     p
+Status:       error
+Rows read:    0
+Rows written: 0
+";
+
+    fn expect(status: &str, rows: Option<u64>) -> Expect {
+        Expect { status: status.into(), rows_read: rows, rows_written: rows, output: None }
+    }
+
+    fn observed(stdout: &str, exit_code: i64) -> Observed {
+        let (rows_read, rows_written) = parse_rows_from_stdout(stdout);
+        Observed { exit_code, summary_status: parse_summary_status(stdout), rows_read, rows_written }
+    }
+
+    #[test]
+    fn summary_status_is_parsed() {
+        assert_eq!(parse_summary_status(SUMMARY_ERROR).as_deref(), Some("error"));
+        assert_eq!(parse_summary_status("no summary here"), None);
+    }
+
+    #[test]
+    fn error_summary_fails_even_with_exit_zero() {
+        // Older cores printed `Status: error` but exited 0.
+        let f = validate_expects(&expect("success", None), &observed(SUMMARY_ERROR, 0), Path::new("/x"));
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].contains("summary status: error"), "{f:?}");
+    }
+
+    #[test]
+    fn row_counts_are_enforced() {
+        let stdout = "Status:       success\nRows read:    3\nRows written: 4\n";
+        let f = validate_expects(&expect("success", Some(4)), &observed(stdout, 0), Path::new("/x"));
+        assert_eq!(f, vec!["rows_read: expected 4, got 3".to_string()]);
+    }
+
+    #[test]
+    fn matching_run_passes() {
+        let stdout = "Status:       success\nRows read:    100,000\nRows written: 100,000\n";
+        let f = validate_expects(&expect("success", Some(100_000)), &observed(stdout, 0), Path::new("/x"));
+        assert!(f.is_empty(), "{f:?}");
+    }
+
+    #[test]
+    fn expected_error_passes_on_failure() {
+        let f = validate_expects(&expect("error", None), &observed(SUMMARY_ERROR, 1), Path::new("/x"));
+        assert!(f.is_empty(), "{f:?}");
     }
 }
