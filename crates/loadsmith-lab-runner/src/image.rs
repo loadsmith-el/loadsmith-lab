@@ -67,9 +67,9 @@ pub fn remove_temp_dirs() {
 /// `overrides` are paths to locally-built plugin binaries (the lab's `--plugin`
 /// flag) — layered on top of the cache in a per-run overlay so you can test a
 /// plugin you're developing against released versions of the rest. (Caveat: an
-/// override binary must be runnable in the container — built for linux with a
-/// glibc ≤ the image's; a host `cargo build` on a very new distro may be too
-/// new. Build it in a bookworm-ish env if so.)
+/// override *binary* must be runnable in the container. A host `cargo build`
+/// links your distro's glibc, which may be newer than the image's; pass the
+/// crate dir instead, which builds a static musl binary like a release does.)
 pub async fn prepare_plugin_dir(
     docker: &DockerClient,
     image: &str,
@@ -151,9 +151,12 @@ async fn resolve_override_binaries(
     overrides: &[PathBuf],
 ) -> Result<Vec<PathBuf>> {
     let mut out = Vec::new();
-    for path in overrides {
+    for (i, path) in overrides.iter().enumerate() {
         if path.is_dir() {
-            out.extend(build_plugin_project(docker, path).await?);
+            // One target dir per project: each build starts from an empty one,
+            // so a shared dir would delete the previous project's binaries.
+            let target = build_dir().join(i.to_string());
+            out.extend(build_plugin_project(docker, path, &target).await?);
         } else {
             out.push(path.clone());
         }
@@ -161,12 +164,20 @@ async fn resolve_override_binaries(
     Ok(out)
 }
 
-/// Build a plugin project in a `rust:bookworm` container (so the binaries are
-/// glibc-compatible with the loadsmith image) and return host paths to the
-/// produced `loadsmith-*` binaries. `path` may be a single plugin crate or a
-/// workspace root (a virtual manifest → builds every member). A fresh target dir
-/// is used so only the just-built binaries appear.
-async fn build_plugin_project(docker: &DockerClient, path: &Path) -> Result<Vec<PathBuf>> {
+/// Toolchain image for `--plugin <project>` builds. Its host target is
+/// `*-unknown-linux-musl`, matching the canonical release workflow.
+const PLUGIN_TOOLCHAIN: &str = "rust:1-alpine";
+
+/// Build a plugin project in a `rust:1-alpine` container (static musl binaries,
+/// same as a canonical release, so they run in any loadsmith image) and return
+/// host paths to the produced `loadsmith-*` binaries. `path` may be a single
+/// plugin crate or a workspace root (a virtual manifest → builds every member).
+/// `target` is emptied first so only the just-built binaries appear.
+async fn build_plugin_project(
+    docker: &DockerClient,
+    path: &Path,
+    target: &Path,
+) -> Result<Vec<PathBuf>> {
     let path = path
         .canonicalize()
         .with_context(|| format!("resolving plugin project {}", path.display()))?;
@@ -178,9 +189,8 @@ async fn build_plugin_project(docker: &DockerClient, path: &Path) -> Result<Vec<
         format!("/src/{}/Cargo.toml", rel.display())
     };
 
-    let target = build_dir();
-    let _ = std::fs::remove_dir_all(&target);
-    std::fs::create_dir_all(&target)?;
+    let _ = std::fs::remove_dir_all(target);
+    std::fs::create_dir_all(target)?;
     // Running as the host user, cargo can't write the image's root-owned
     // CARGO_HOME; give it a persistent user-owned one (also caches the registry
     // across runs).
@@ -189,14 +199,17 @@ async fn build_plugin_project(docker: &DockerClient, path: &Path) -> Result<Vec<
 
     // run_container won't pull on its own (unlike build); ensure the toolchain
     // image is present.
-    if !docker.image_exists("rust:bookworm").await? {
-        docker.pull_image("rust:bookworm").await.context("pulling rust:bookworm")?;
+    if !docker.image_exists(PLUGIN_TOOLCHAIN).await? {
+        docker
+            .pull_image(PLUGIN_TOOLCHAIN)
+            .await
+            .with_context(|| format!("pulling {PLUGIN_TOOLCHAIN}"))?;
     }
 
-    tracing::info!("building plugin project {} in rust:bookworm", path.display());
+    tracing::info!("building plugin project {} in {PLUGIN_TOOLCHAIN}", path.display());
     let id = docker
         .run_container(ContainerConfig {
-            image: "rust:bookworm".to_string(),
+            image: PLUGIN_TOOLCHAIN.to_string(),
             hostname: None,
             network: None,
             env: vec![
@@ -227,7 +240,16 @@ async fn build_plugin_project(docker: &DockerClient, path: &Path) -> Result<Vec<
     } else {
         let logs = docker.container_logs(&id).await.unwrap_or_default();
         let lines: Vec<&str> = logs.lines().collect();
-        lines[lines.len().saturating_sub(15)..].join("\n")
+        let mut tail = lines[lines.len().saturating_sub(15)..].join("\n");
+        // The source is mounted read-only, so cargo can't refresh a stale lockfile
+        // (typically right after a version bump).
+        if logs.contains("failed to write /src/Cargo.lock") {
+            tail.push_str(
+                "\nhint: Cargo.lock is out of date; run any cargo command (e.g. \
+                 `cargo metadata`) in the project on the host to refresh it",
+            );
+        }
+        tail
     };
     let _ = docker.stop_and_remove(&id).await;
     anyhow::ensure!(

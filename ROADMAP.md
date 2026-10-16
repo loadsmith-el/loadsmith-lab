@@ -24,6 +24,9 @@ What's shipped and what's queued next. Shipped items are documented in
       runs, host-user containers (no root-owned leftovers), temp dirs deleted,
       `--plugin` builds and the `--loadsmith` core built once per run (a failed
       build is reported with cargo's own error, once)
+- [x] **`--plugin` projects build as static musl** in `rust:1-alpine`, the same
+      build the canonical release ships (several projects each get their own
+      target dir; a stale `Cargo.lock` under the read-only mount gets a hint)
 - [x] **Strict expectations** — `rows_read`/`rows_written` are actually asserted
       (they were parsed but never checked), and `status: success` also requires
       the summary's `Status: success`

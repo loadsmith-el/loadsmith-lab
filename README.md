@@ -26,8 +26,9 @@ verification so a pipeline can be proven against a real database — not a mock.
 - **Self-contained images.** Service images bake the seed data in at build time, so
   there's nothing to load at runtime beyond the database's own init.
 - **Bring your own core/plugins.** Test a local Loadsmith and/or plugins with
-  `--loadsmith <binary|project>` and `--plugin <binary|project>` (a project is
-  built in a `rust:bookworm` container), or just use a packaged image — same
+  `--loadsmith <binary|project>` and `--plugin <binary|project>` (a plugin
+  project is built in a `rust:1-alpine` container as a static musl binary, like
+  a release), or just use a packaged image — same
   cases either way. Plugins aren't bundled in the image; the lab installs the
   canonical set into a cache and mounts it, with `--plugin` overriding individual
   ones.

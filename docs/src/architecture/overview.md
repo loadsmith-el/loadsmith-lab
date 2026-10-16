@@ -101,7 +101,7 @@ until first use.
                            (--tag <t> picks the version, else :slim)
    then prepare the plugin dir: the cached canonical set (loadsmith plugin
    install --all) plus any --plugin overlays (binary, or a crate/workspace built
-   in a rust:bookworm container)
+   as static musl in a rust:1-alpine container)
 5. run loadsmith in a container on the network, mounting the pipeline + /output +
    the plugin dir at /plugins; stream its output through the gutter live
 6. validate expectations (exit code, row counts, output file)

@@ -49,7 +49,8 @@ To test a plugin you're developing, override it with `--plugin <path>` (repeatab
 
 - **binary** → overlaid directly over the cache.
 - **plugin crate** (e.g. `../loadsmith-canonical-plugins/jsonl`) → built in a
-  `rust:bookworm` container (glibc-matches the image), then overlaid.
+  `rust:1-alpine` container as a static musl binary (the same build a release
+  ships, so it runs in any loadsmith image), then overlaid.
 - **workspace root** (e.g. `../loadsmith-canonical-plugins`) → builds every member
   and overlays them all.
 

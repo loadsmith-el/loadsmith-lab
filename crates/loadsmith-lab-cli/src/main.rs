@@ -81,8 +81,10 @@ struct BundleRunArgs {
     #[arg(long)]
     tag: Option<String>,
 
-    /// Override a cached canonical plugin with a locally-built binary
-    /// (repeatable; must be runnable in the loadsmith container)
+    /// Override a cached canonical plugin with a local one: a binary, a plugin
+    /// crate, or a workspace root, e.g. `--plugin ../loadsmith-canonical-plugins/jsonl`.
+    /// A crate/workspace is built as static musl in a rust:1-alpine container, like
+    /// a release (repeatable; a binary must be runnable in the loadsmith container)
     #[arg(long = "plugin", value_name = "PATH")]
     plugins: Vec<PathBuf>,
 
@@ -119,9 +121,10 @@ struct RunArgs {
     #[arg(long)]
     tag: Option<String>,
 
-    /// Override a cached canonical plugin with a locally-built binary, e.g.
-    /// `--plugin ../loadsmith-canonical-plugins/target/release/loadsmith-destination-jsonl`
-    /// (repeatable; the binary must be runnable in the loadsmith container)
+    /// Override a cached canonical plugin with a local one: a binary, a plugin
+    /// crate, or a workspace root, e.g. `--plugin ../loadsmith-canonical-plugins/jsonl`.
+    /// A crate/workspace is built as static musl in a rust:1-alpine container, like
+    /// a release (repeatable; a binary must be runnable in the loadsmith container)
     #[arg(long = "plugin", value_name = "PATH")]
     plugins: Vec<PathBuf>,
 
