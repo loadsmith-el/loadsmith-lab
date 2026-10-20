@@ -111,7 +111,8 @@ full origin/install model.
        service by its alias (e.g. pg). Nothing is rewritten.
 5. validate: status, exit code and row counts from Loadsmith's JSON run
      summary (`--summary-file`; older engines: the summary box on stdout),
-     output file exists — all against `expect`
+     output file exists, and (optionally) substrings that must or must not
+     appear in its stdout/stderr/summary — all against `expect`
 6. tear everything down and report
 ```
 

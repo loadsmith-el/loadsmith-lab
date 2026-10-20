@@ -51,6 +51,11 @@ What's shipped and what's queued next. Shipped items are documented in
       `run --help` and still scraped. Failure verdicts carry the engine's
       `cause`, the report shows plugin versions from `route[]`, and cases can
       assert `expect.exit_code`
+- [x] **Log expectations** — `expect.logs.not_contains` / `contains` check the
+      loadsmith container's stdout, stderr and JSON run summary (ANSI-stripped),
+      so a case can prove a secret (`{{ secret(...) }}`, `env()`/`file()` values)
+      never leaks; a leak is reported by prefix + length and masked in the
+      gutter and failure lines, never echoed
 - [x] Test bundles — sequenced cases with setup/validate/cleanup hooks that
       run in a per-bundle image (no host deps); example
       `parquet-destination` validates single-file vs. chunked Parquet; also

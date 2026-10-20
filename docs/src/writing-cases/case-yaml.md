@@ -67,6 +67,9 @@ expect:
   output:                # optional
     file: string         # path to output file
     row_count: integer   # optional — number of lines expected in the file
+  logs:                  # optional
+    not_contains: [string]  # optional — must not appear in loadsmith's output
+    contains: [string]      # optional — must appear in loadsmith's output
 ```
 
 ## Section reference
@@ -196,12 +199,34 @@ Assertions validated after the run. A case fails if any assertion does not hold.
 | `rows_written` | integer | no | Expected `rows_written` from the loadsmith run summary |
 | `output.file` | string | no | Output file to check. Relative paths resolve under the host side of the `/output` mount |
 | `output.row_count` | integer | no | Expected number of lines in the output file |
+| `logs.not_contains` | list of strings | no | Substrings that must appear in **none** of the loadsmith container's stdout, stderr or JSON run summary — e.g. a password, to prove it never leaks |
+| `logs.contains` | list of strings | no | Substrings that must appear in at least one of them |
 
 Status, exit code and row counts come from loadsmith's JSON run summary
 (`--summary-file`). With an engine that predates it (the published `v0.2.0`
 images), row counts are parsed from the summary box printed to stdout instead
 (case-insensitive, comma-formatted numbers such as `100,000`). See
 [How the lab reads the run](../getting-started/understanding-output.md#how-the-lab-reads-the-run).
+
+### Proving a secret never leaks
+
+`expect.logs` asserts on what the loadsmith container printed. ANSI colour codes
+are stripped before matching, and stdout, stderr and the run summary file are
+each searched:
+
+```yaml
+expect:
+  status: success
+  logs:
+    not_contains: ["s3cr3t-value", "BEGIN PRIVATE KEY"]   # neither stdout, stderr nor the summary
+    contains: ["schema negotiated"]                        # optional positive check
+```
+
+A `not_contains` needle is a secret, so the lab never prints it: a failure reads
+`logs.not_contains: needle "s3cr…" (12 chars) found in stderr`, and the needle is
+masked (`[redacted "s3cr…" (12 chars)]`) in the live loadsmith output and in the
+other failure lines. A misspelt key under `logs:` is an error, not a silent pass.
+See [Validation behavior](../reference/case-yaml-schema.md#validation-behavior).
 
 ## Complete example
 

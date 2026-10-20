@@ -150,9 +150,10 @@ The loadsmith container is started on the case network with the output dir mount
 at `/output` and driven with
 `run /case/pipeline.yaml --plugin-dir /plugins --log-level <level>`, plus
 `--summary-file /lab-summary/summary.json` (a per-case scratch dir) when the
-image supports it. Its combined stdout+stderr is streamed to the report gutter
-live via `DockerClient::stream_logs(follow:true)`; the verdict is read from the
-JSON run summary, or from that text for an engine without the flag.
+image supports it. Its stdout+stderr is streamed to the report gutter live via
+`DockerClient::stream_logs(follow:true)`; the verdict is read from the JSON run
+summary, or from that text for an engine without the flag. Each stream is also
+kept on its own for `expect.logs`.
 
 ## DockerClient API
 
@@ -179,7 +180,7 @@ impl DockerClient {
     pub async fn stop_and_remove(&self, id: &str) -> Result<()>;   // force + volumes
     pub async fn prune_stale(&self, older_than: &str) -> Result<()>; // label-scoped
     pub async fn container_logs(&self, id: &str) -> Result<String>;
-    pub async fn stream_logs<F: FnMut(&str)>(&self, id: &str, on_line: F) -> Result<String>;
+    pub async fn stream_logs<F: FnMut(&str)>(&self, id: &str, on_line: F) -> Result<CapturedLogs>;
     pub async fn container_ip(&self, id: &str, net_name: &str) -> Result<String>;
 
     // Readiness
@@ -187,8 +188,9 @@ impl DockerClient {
 }
 ```
 
-`stream_logs` follows the container's combined stdout+stderr and invokes `on_line`
-for each complete line as it arrives, returning the full accumulated text at exit.
+`stream_logs` follows the container's stdout+stderr and invokes `on_line` for each
+complete line as it arrives, returning a `CapturedLogs { combined, stdout, stderr }`
+at exit (`combined` interleaves both streams in arrival order).
 
 `ContainerConfig`:
 

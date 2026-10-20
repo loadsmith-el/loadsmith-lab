@@ -94,6 +94,11 @@ expect:
                          #   run's output dir (what the pipeline writes under
                          #   /output); an absolute path is a host path
     row_count: integer   # optional — expected number of lines in the file
+
+  logs:                  # optional — assert on the loadsmith container's output
+    not_contains: [string]  # optional — none may appear in stdout, stderr or
+                            #   the JSON run summary (secrets: never printed)
+    contains: [string]      # optional — each must appear in at least one of them
 ```
 
 ## Defaults
@@ -110,6 +115,8 @@ expect:
 | `loadsmith.volumes` | `[]` |
 | `loadsmith.env` | `[]` |
 | `loadsmith.docker_args` | `[]` |
+| `expect.logs.contains` | `[]` |
+| `expect.logs.not_contains` | `[]` |
 
 ## Validation behavior
 
@@ -133,3 +140,18 @@ expect:
 - A missing `expect.exit_code`, `expect.rows_read` or `expect.rows_written`
   means "don't assert this value" — the case can still pass if the other assertions hold.
 - If `expect.output.file` does not exist after the run, the case fails.
+- `expect.logs` checks the loadsmith container's captured **stdout**, its
+  **stderr** and, when the engine wrote one, the **JSON run summary** file —
+  so it works on the text fallback too (there it covers stdout and stderr).
+  ANSI escapes are stripped before matching; matching is a plain,
+  case-sensitive substring test. Unknown keys under `logs:` (e.g. a misspelt
+  `not_contain`) are rejected, and an empty needle fails the case.
+- `expect.logs.not_contains` needles are treated as secrets. A failure names
+  the needle by a short prefix and its length plus every stream it reached —
+  `logs.not_contains: needle "s3cr…" (17 chars) found in stderr, summary file`
+  — and the lab masks the needles in the live gutter and in every failure line
+  (e.g. a `cause:` that carries the leak) as `[redacted "s3cr…" (17 chars)]`.
+  The raw output still lands in `loadsmith.stdout` in the run's temporary
+  output dir, which is deleted once the case is validated.
+- `expect.logs.contains` needles are not secret: a miss prints the needle and
+  the streams searched.

@@ -148,6 +148,8 @@ Failure reasons are printed as indented `→` lines underneath. The messages are
 | `expect.rows_read` / `rows_written` | `rows_read: expected N, got M` (`got none` if the summary had no count) |
 | `expect.output.file` | `output file not found: <path>` |
 | `expect.output.row_count` | `row_count: expected N, got M in <path>`, or `cannot count rows in <path>: <error>` |
+| `expect.logs.not_contains` | `logs.not_contains: needle "s3cr…" (17 chars) found in stderr, summary file` — the needle is shown only as a short prefix + length, and masked as `[redacted …]` in the gutter and other failure lines |
+| `expect.logs.contains` | `logs.contains: "<needle>" not found in stdout, stderr, summary file` |
 | (summary document) | `run summary: version N is not supported (this lab reads version 1)`; `run summary: exit_code N disagrees with the container's exit code M` |
 
 A case that fails before validation (for example, a service never became ready)
