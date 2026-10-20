@@ -104,10 +104,13 @@ until first use.
    install --all) plus any --plugin overlays (binary, or a crate/workspace built
    as static musl in a rust:1-alpine container)
 5. run loadsmith in a container on the network, mounting the pipeline + /output +
-   the plugin dir at /plugins; stream its output through the gutter live
+   the plugin dir at /plugins (+ a scratch dir at /lab-summary when the image
+   supports `--summary-file`, probed once per image via `run --help`); stream
+   its output through the gutter live, then read the JSON run summary (or, for
+   an older engine, scrape the summary box) — summary.rs
 6. tear down containers
 7. tear down network
-8. validate expectations (exit code, row counts, output file)
+8. validate expectations (status, exit code, row counts, output file)
 9. return CaseResult
 ```
 
@@ -151,6 +154,7 @@ pub struct CaseResult {
     pub duration: Duration,
     pub rows_read: Option<u64>,
     pub rows_written: Option<u64>,
+    pub route: Option<String>,        // "postgres 0.2.1 → jsonl 0.2.1", from the run summary
     pub prep_lines: Vec<String>,      // image build/pull messages, readiness status
     pub loadsmith_output: String,     // loadsmith's output, shown framed
     pub failures: Vec<String>,        // what assertions failed

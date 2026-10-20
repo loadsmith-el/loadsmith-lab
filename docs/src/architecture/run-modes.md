@@ -96,6 +96,11 @@ The lab:
 5. Drives the container with
    `loadsmith run /case/pipeline.yaml --plugin-dir /plugins --log-level <level>`
    (the image's `ENTRYPOINT` is `loadsmith`), propagating `NO_COLOR` when needed.
+   When the image's `run --help` lists `--summary-file` (checked once per image),
+   it also passes `--summary-file /lab-summary/summary.json` with a scratch dir
+   mounted there, and builds the verdict from that JSON run summary; an older
+   engine (the published `v0.2.0` images) gets no flag and its summary box is
+   scraped instead.
 6. Streams the container's combined stdout+stderr through the report gutter in real
    time, and validates the output file under the host side of the `/output` mount.
    The container runs as the host user, so outputs aren't root-owned; the output

@@ -72,8 +72,10 @@ Everything the lab creates is cleaned up, even across interrupted runs:
 - Containers that write into host bind mounts (the loadsmith run, `plugin install`
   into the cache, `--plugin` builds) run as the host `uid:gid`, so nothing the lab
   leaves on the host is root-owned.
-- Temp dirs (`/output` per case, the `--plugin` overlay and build target) are
-  deleted at the end of the case / run.
+- Temp dirs (`/output` and `/lab-summary` per case, the `--plugin` overlay and
+  build target) are deleted at the end of the case / run.
+- The `--summary-file` support probe (`loadsmith run --help`, once per image per
+  run) uses a throwaway labelled container, removed right after.
 
 ## Image naming
 
@@ -146,9 +148,11 @@ Loadsmith always runs in a container. Its image is resolved by
 
 The loadsmith container is started on the case network with the output dir mounted
 at `/output` and driven with
-`run /case/pipeline.yaml --plugin-dir /plugins --log-level <level>`. Its
-combined stdout+stderr is streamed to the report gutter live via
-`DockerClient::stream_logs(follow:true)`.
+`run /case/pipeline.yaml --plugin-dir /plugins --log-level <level>`, plus
+`--summary-file /lab-summary/summary.json` (a per-case scratch dir) when the
+image supports it. Its combined stdout+stderr is streamed to the report gutter
+live via `DockerClient::stream_logs(follow:true)`; the verdict is read from the
+JSON run summary, or from that text for an engine without the flag.
 
 ## DockerClient API
 

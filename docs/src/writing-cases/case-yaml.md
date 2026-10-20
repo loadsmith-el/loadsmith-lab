@@ -61,6 +61,7 @@ pipeline:
 
 expect:
   status: string         # "success" or "error"
+  exit_code: integer     # optional — exact loadsmith exit code (e.g. 3)
   rows_read: integer     # optional — exact rows_read asserted
   rows_written: integer  # optional — exact rows_written asserted
   output:                # optional
@@ -190,13 +191,17 @@ Assertions validated after the run. A case fails if any assertion does not hold.
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `status` | string | yes | Expected outcome. `"success"` or `"error"` |
-| `rows_read` | integer | no | Expected `Rows read` from the loadsmith summary |
-| `rows_written` | integer | no | Expected `Rows written` from the loadsmith summary |
+| `exit_code` | integer | no | Expected loadsmith exit code (`0`, `1`, `2`, `3`, `4`, `5`, `130`, `143`), e.g. `3` for a configuration error |
+| `rows_read` | integer | no | Expected `rows_read` from the loadsmith run summary |
+| `rows_written` | integer | no | Expected `rows_written` from the loadsmith run summary |
 | `output.file` | string | no | Output file to check. Relative paths resolve under the host side of the `/output` mount |
 | `output.row_count` | integer | no | Expected number of lines in the output file |
 
-Row counts are parsed from the loadsmith summary box printed to stdout. The
-parser is case-insensitive and handles comma-formatted numbers (`100,000`).
+Status, exit code and row counts come from loadsmith's JSON run summary
+(`--summary-file`). With an engine that predates it (the published `v0.2.0`
+images), row counts are parsed from the summary box printed to stdout instead
+(case-insensitive, comma-formatted numbers such as `100,000`). See
+[How the lab reads the run](../getting-started/understanding-output.md#how-the-lab-reads-the-run).
 
 ## Complete example
 

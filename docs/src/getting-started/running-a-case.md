@@ -52,11 +52,13 @@ When you run `--select catalog/postgres-to-jsonl`, the lab:
    (the cached canonical set + any `--plugin` overlays), mounted at `/plugins`.
 8. **Runs loadsmith in a container** on the same network, mounting the pipeline at
    `/case/pipeline.yaml`, an output dir at `/output`, and the plugin dir, with
-   `run /case/pipeline.yaml --plugin-dir /plugins --log-level <level>`. The
+   `run /case/pipeline.yaml --plugin-dir /plugins --log-level <level>` (plus
+   `--summary-file` into a mounted scratch dir when the engine supports it). The
    pipeline reaches Postgres by its alias `pg` — no rewriting.
 9. **Streams** the container's output through the gutter live.
-10. **Validates** exit code, row counts from the summary, and output file line count
-    (read from the host side of the `/output` mount).
+10. **Validates** status, exit code and row counts from the JSON run summary (the
+    summary box on stdout for an engine without `--summary-file`), and the output
+    file line count (read from the host side of the `/output` mount).
 11. **Tears down** the containers and the Docker network.
 
 ## Forwarding flags to loadsmith

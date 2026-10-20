@@ -109,7 +109,9 @@ full origin/install model.
      the service
      · Loadsmith runs in a container on the same network and reaches the
        service by its alias (e.g. pg). Nothing is rewritten.
-5. validate: exit status, output file exists, row counts match `expect`
+5. validate: status, exit code and row counts from Loadsmith's JSON run
+     summary (`--summary-file`; older engines: the summary box on stdout),
+     output file exists — all against `expect`
 6. tear everything down and report
 ```
 
@@ -129,6 +131,7 @@ loadsmith-lab 0.1.0  ·  local loadsmith
   │ 2026-10-16T12:00:05.410877Z  INFO loadsmith_core::reporter: 100,000 rows · 50 batches
   │ Status:       success
   │ Throughput:   31,888 rows/s
+  · plugins: postgres 0.2.1 → jsonl 0.1.2
   ✓ postgres-to-jsonl   100,000 read · 100,000 written   5.6s
 
 ──────────────────────────────────────────────────

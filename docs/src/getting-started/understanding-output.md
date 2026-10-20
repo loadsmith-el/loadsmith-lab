@@ -72,14 +72,42 @@ log level:
 
 The framing makes it visually clear which output belongs to loadsmith and which
 belongs to the lab itself. The header (`loadsmith <version>`, then the route)
-and the summary box come from loadsmith's stdout. The schema and progress lines
+and the summary box come from loadsmith's stdout. They are there for you to
+read; the lab itself doesn't parse them (see [How the lab reads the
+run](#how-the-lab-reads-the-run)). The schema and progress lines
 are `tracing` records on its stderr, so each carries a timestamp, level and
 target. Progress is reported at doubling batch intervals (1, 2, 4, 8, 16…) as
 `<rows> rows · <n> batch(es)`.
 
+## How the lab reads the run
+
+The verdict is built from loadsmith's **machine-readable run summary**, not
+from the box above. The lab passes `--summary-file /lab-summary/summary.json`
+(a scratch dir mounted next to `/output`), keeps the human report on stdout
+for the gutter, and reads `status`, `exit_code`, `cause`, `rows_read`,
+`rows_written` and `route[]` from the JSON. It only reads summary `version: 1`;
+any other version fails the case.
+
+Engines that predate the flag (the published `v0.2.0` images) would reject it
+as a usage error, so the lab first checks the image's `loadsmith run --help`
+(once per image per lab run) and passes the flag only when it is listed.
+Otherwise it says so in a prep line and scrapes the summary box:
+
+```
+  · loadsmith image predates --summary-file; reading its human report
+```
+
+The text path is also used if a run produced no summary file at all.
+
 ## Verdict
 
-After the framed output, the case verdict is printed:
+After the framed output, the case verdict is printed. When the summary named
+the plugins (`route[]`), a dim line before it shows each stage's type and
+version:
+
+```
+  · plugins: postgres 0.2.1 → jsonl 0.1.2
+```
 
 **Pass:**
 ```
@@ -93,6 +121,16 @@ After the framed output, the case verdict is printed:
     → row_count: expected 100000, got 99998 in /tmp/ls-lab-…/events.jsonl
 ```
 
+A run that failed when it shouldn't have also gets the engine's root cause:
+```
+  · plugins: postgress → jsonl
+  ✗ postgres-to-jsonl   1.4s
+    → status: expected 'success', got exit code 4 (summary status: error)
+    → cause: plugin not found: binary 'loadsmith-source-postgress' not found in /plugins or PATH
+```
+
+(A stage whose plugin never started has no version in the `plugins:` line.)
+
 The verdict line includes:
 - `✓`/`✗` icon (green/red with color enabled)
 - The case name (`case.name` from `case.yaml`)
@@ -104,10 +142,13 @@ Failure reasons are printed as indented `→` lines underneath. The messages are
 
 | Check | Message |
 |-------|---------|
-| `expect.status` | `status: expected 'success', got exit code N (summary status: …)` — `success` needs both exit code 0 and the summary's `Status: success` |
+| `expect.status` | `status: expected 'success', got exit code N (summary status: …)` — `success` needs both exit code 0 and the summary's `status: success` |
+| `expect.exit_code` | `exit_code: expected N, got M` |
+| (either of the two above) | `cause: <message>` — the run summary's `cause` (the box's `Cause:` line, or the `error:` line, on the text path), when the run failed |
 | `expect.rows_read` / `rows_written` | `rows_read: expected N, got M` (`got none` if the summary had no count) |
 | `expect.output.file` | `output file not found: <path>` |
 | `expect.output.row_count` | `row_count: expected N, got M in <path>`, or `cannot count rows in <path>: <error>` |
+| (summary document) | `run summary: version N is not supported (this lab reads version 1)`; `run summary: exit_code N disagrees with the container's exit code M` |
 
 A case that fails before validation (for example, a service never became ready)
 shows the error itself as the `→` line, under the qualified `<origin>/<name>` and

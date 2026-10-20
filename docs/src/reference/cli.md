@@ -44,6 +44,14 @@ loadsmith-lab run --loadsmith ../loadsmith --all --cases-dir /path/to/cases
 | `0` | All selected cases passed |
 | `1` | One or more cases failed or errored |
 
+**How the outcome is read:** each case's loadsmith run gets
+`--summary-file` (into a scratch dir mounted at `/lab-summary`) when the image's
+`loadsmith run --help` lists it, and the verdict comes from that JSON run
+summary (`version: 1`). Older engines — including the published `v0.2.0`
+images, the default today — don't know the flag, so the lab scrapes their
+summary box instead and says so in a prep line. See
+[How the lab reads the run](../getting-started/understanding-output.md#how-the-lab-reads-the-run).
+
 **What `--log-level` does:**
 
 The `--log-level` flag controls two things:

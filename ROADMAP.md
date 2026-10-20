@@ -45,6 +45,12 @@ What's shipped and what's queued next. Shipped items are documented in
 - [x] **Strict expectations** — `rows_read`/`rows_written` are actually asserted
       (they were parsed but never checked), and `status: success` also requires
       the summary's `Status: success`
+- [x] **Reads the JSON run summary** — the verdict comes from the engine's
+      `--summary-file` document (schema `version: 1`) instead of scraping the
+      human report; older engines (published `v0.2.0`) are detected via
+      `run --help` and still scraped. Failure verdicts carry the engine's
+      `cause`, the report shows plugin versions from `route[]`, and cases can
+      assert `expect.exit_code`
 - [x] Test bundles — sequenced cases with setup/validate/cleanup hooks that
       run in a per-bundle image (no host deps); example
       `parquet-destination` validates single-file vs. chunked Parquet; also
