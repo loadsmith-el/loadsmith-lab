@@ -27,37 +27,35 @@ Those questions require a real Postgres instance with real data and a real invoc
 ## What a run looks like
 
 ```
-loadsmith-lab v0.1.0   local loadsmith
+loadsmith-lab 0.1.0  ·  local loadsmith
 
-▶ postgres-to-jsonl
-  "Read 100k rows from PostgreSQL and write to JSONL"
-  image loadsmith-lab/images/lab-postgres-15:local already in cache
-  waiting for postgres at 172.18.0.2:5432...
-  postgres ready
-
-  │ Loadsmith v0.1.0  ·  postgres → jsonl
+▶ catalog/postgres-to-jsonl  Reads 100k rows from PostgreSQL and writes them to JSONL
+  · waiting for pg at 172.18.0.2:5432…
+  · pg ready (2.0s)
   │
-  │   batch   1    2,000 rows
-  │   batch   2    4,000 rows
-  │   batch   4    8,000 rows
-  │   batch   8   16,000 rows
-  │   batch  16   32,000 rows
-  │   batch  32   64,000 rows
-  │   batch  50  100,000 rows
+  │ loadsmith 0.2.0
+  │ postgres → jsonl
   │
-  │ ─────────────────────────────────────────────────────
+  │ 2026-10-16T12:00:03.112408Z  INFO loadsmith_core::reporter: schema negotiated — 34 columns
+  │ ...
+  │ 2026-10-16T12:00:04.201733Z  INFO loadsmith_core::reporter: 2,000 rows · 1 batch
+  │ 2026-10-16T12:00:04.233019Z  INFO loadsmith_core::reporter: 4,000 rows · 2 batches
+  │ 2026-10-16T12:00:04.298516Z  INFO loadsmith_core::reporter: 8,000 rows · 4 batches
+  │ ...
+  │ 2026-10-16T12:01:17.950274Z  INFO loadsmith_core::reporter: 100,000 rows · 50 batches
+  │
+  │ ───────────────────────────────────────────
   │ Pipeline:     postgres-to-jsonl-smoke
   │ Route:        loadsmith-source-postgres → loadsmith-destination-jsonl
   │ Status:       success
   │ Rows read:    100,000
   │ Rows written: 100,000
   │ Batches:      50
-  │ Duration:     0:01:14
+  │ Duration:     00:01:14.012
   │ Throughput:   1,351 rows/s
-  │ ─────────────────────────────────────────────────────
+  │ ───────────────────────────────────────────
+  ✓ postgres-to-jsonl   100,000 read · 100,000 written   74.2s
 
-  ✓ passed   100,000 rows read · 100,000 written   74.2s
-
-────────────────────────────────────────────────────────
+──────────────────────────────────────────────────
 1 passed, 0 failed
 ```

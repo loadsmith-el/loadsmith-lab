@@ -30,11 +30,11 @@ loadsmith-lab run --loadsmith ../loadsmith --all --cases-dir /path/to/cases
 
 | Flag | Default | Description |
 |---|---|---|
-| `--select <origin>/<name>` | — | Run only this case. Mutually exclusive with `--all` |
-| `--all` | — | Run all available cases (installed + local origins). Mutually exclusive with `--select` |
+| `--select <origin>/<name>` | — | Run only this case. Ignored if `--all` is also given |
+| `--all` | — | Run all available cases (installed + local origins). Takes precedence over `--select` if both are given |
 | `--loadsmith <path>` | — | Run a local loadsmith core: a binary (wrapped in a minimal image) or a project dir (built from its Dockerfile). Without it, the canonical published image `ghcr.io/loadsmith-el/loadsmith` is pulled |
-| `--plugin <path>` | — | Override a cached canonical plugin with a local one: a binary, a plugin crate, or a workspace root (built as static musl binaries in a `rust:1-alpine` container, like a release). Repeatable |
-| `--tag <tag>` | — | Version tag of the canonical image `ghcr.io/loadsmith-el/loadsmith:<tag>` (e.g. `v0.1.0-slim`; any flavor, e.g. `static`; default `slim`). Ignored when `--loadsmith` is given |
+| `--plugin <path>` | — | Override a cached canonical plugin with a local one: a binary, a plugin crate, or a workspace root (built as static musl binaries in a `rust:1-alpine` container, like a release). Repeatable. The cache itself is never refreshed — see [Run Modes](../architecture/run-modes.md#plugins--a-mounted-cache-with---plugin-overrides) |
+| `--tag <tag>` | — | Version tag of the canonical image `ghcr.io/loadsmith-el/loadsmith:<tag>` (e.g. `v0.2.0-slim`; any flavor, e.g. `static`; default `slim`). Ignored when `--loadsmith` is given |
 | `--cases-dir <path>` | — | Ad-hoc: resolve cases directly from this dir (bare `<name>` subdirs), bypassing origins |
 
 **Exit codes:**
@@ -71,11 +71,11 @@ loadsmith-lab bundle run --loadsmith ../loadsmith --all
 
 | Flag | Default | Description |
 |---|---|---|
-| `--select <origin>/<name>` | — | Run only this bundle. Mutually exclusive with `--all` |
-| `--all` | — | Run all available bundles. Mutually exclusive with `--select` |
+| `--select <origin>/<name>` | — | Run only this bundle. Ignored if `--all` is also given |
+| `--all` | — | Run all available bundles. Takes precedence over `--select` if both are given |
 | `--loadsmith <path>` | — | Run a local loadsmith core: a binary (wrapped in a minimal image) or a project dir (built from its Dockerfile). Without it, the canonical published image `ghcr.io/loadsmith-el/loadsmith` is pulled |
 | `--plugin <path>` | — | Override a cached canonical plugin with a local one: a binary, a plugin crate, or a workspace root (built as static musl binaries in a `rust:1-alpine` container, like a release). Repeatable |
-| `--tag <tag>` | — | Version tag of the canonical image `ghcr.io/loadsmith-el/loadsmith:<tag>` (e.g. `v0.1.0-slim`; any flavor, e.g. `static`; default `slim`). Ignored when `--loadsmith` is given |
+| `--tag <tag>` | — | Version tag of the canonical image `ghcr.io/loadsmith-el/loadsmith:<tag>` (e.g. `v0.2.0-slim`; any flavor, e.g. `static`; default `slim`). Ignored when `--loadsmith` is given |
 | `--bundles-dir <path>` | — | Ad-hoc: resolve bundles directly from this dir, bypassing origins |
 
 A bundle's entries reference their cases as `<origin>/<name>` too, resolved the
@@ -124,14 +124,20 @@ loadsmith-lab list --cases-dir /path/to/cases
 
 | Flag | Default | Description |
 |---|---|---|
-| `--available` | off | Also show not-yet-installed cases offered by remote origins' manifests |
+| `--available` | off | Also show not-yet-installed cases offered by remote origins' manifests. Only remote origins that are already cloned are consulted, so a freshly seeded default origin shows nothing until first fetched (e.g. by `origin show catalog`) |
 | `--cases-dir <path>` | — | Ad-hoc: list cases directly from this dir, bypassing origins |
 
 **Output:**
 ```
-catalog/postgres-to-jsonl
-team/mysql-to-parquet
+Cases:
+  catalog/postgres-to-jsonl
+  team/mysql-to-parquet
 ```
+
+With nothing found it prints
+``No cases installed. Try `loadsmith-lab list --available`.`` instead.
+`--available` adds an `Available (not installed):` section listing
+`<origin>/<name>  — <description>`, followed by an install hint.
 
 ---
 
@@ -219,5 +225,14 @@ they're read live). This means a freshly registered remote origin only needs
 |---|---|---|
 | `NO_COLOR` | `--no-color` | Disable ANSI color (any non-empty value) |
 
-Origin/config/cache/workdir locations honour the XDG base-directory variables
-(`XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`).
+Origin config, origin clones and the install workdir honour the XDG
+base-directory variables (`XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`):
+
+| Path (Linux defaults) | Contents |
+|---|---|
+| `~/.config/loadsmith-lab/origins.toml` | registered origins |
+| `~/.cache/loadsmith-lab/origins/<name>/` | remote origin clones |
+| `~/.local/share/loadsmith-lab/installed/` | installed cases/bundles/images |
+
+The plugin cache (`plugins/`) and the `--plugin` build's `cargo-home/` always live
+under `$HOME/.cache/loadsmith-lab/` and ignore `XDG_CACHE_HOME`.

@@ -6,9 +6,17 @@
 ./target/debug/loadsmith-lab list
 ```
 
-Output (cases are listed as `<origin>/<name>`):
+Output (cases are listed as `<origin>/<name>`; with the canonical catalog
+registered there are 24, across postgres, mysql, oracle and sharepoint):
 ```
-catalog/postgres-to-jsonl
+Cases:
+  catalog/mysql-to-jsonl
+  ...
+  catalog/oracle-to-jsonl
+  ...
+  catalog/postgres-to-jsonl
+  ...
+  catalog/sharepoint-list-to-jsonl
 ```
 
 ## Run a single case

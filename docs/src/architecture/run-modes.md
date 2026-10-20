@@ -15,7 +15,8 @@ Point `--loadsmith` at a **project dir** or a **prebuilt binary**:
 - **project dir** → the lab builds a `loadsmith:local` image from its Dockerfile,
   compiling hermetically inside Docker (multi-stage, cargo-chef-cached).
 - **binary** → the lab wraps it in a minimal `debian:bookworm-slim` image (the
-  binary must be runnable there — linux, glibc ≤ the base's).
+  binary must be runnable there: a v0.2.0+ release binary is static musl and
+  always works; a host glibc build needs glibc ≤ bookworm's).
 
 ```bash
 ./target/debug/loadsmith-lab run --loadsmith ../loadsmith --select catalog/postgres-to-jsonl
@@ -23,19 +24,21 @@ Point `--loadsmith` at a **project dir** or a **prebuilt binary**:
 
 The first project build compiles loadsmith inside Docker (slower; cached
 afterward via cargo-chef's dependency layer). The build is hermetic — it compiles
-inside a Debian-based Rust image and ships on a matching Debian runtime, so it is
-correct regardless of the host's glibc; the host's `target/` is never copied in.
+a static musl binary inside `rust:1-alpine`, and the lab builds the Dockerfile's
+default `slim` target (`debian:bookworm-slim`), so it is correct regardless of the
+host's glibc; the host's `target/` is never copied in.
 
 Without `--loadsmith`, the lab pulls the **canonical published image**
 `ghcr.io/loadsmith-el/loadsmith` — like the plugin index and the content origins,
-the package is fixed: `--tag <tag>` picks the version, a case may override the
-full ref via `loadsmith.image`, otherwise the rolling `:slim` variant is used.
+the package is fixed. The image is chosen in this order: `--tag <tag>` >
+a case's `loadsmith.image` (a full ref, used only when no `--tag` is given) >
+the rolling `:slim` variant.
 Resolved via local cache → registry pull; if not pullable, the run fails with a
 clear error.
 
 ```bash
 ./target/debug/loadsmith-lab run --select catalog/postgres-to-jsonl                    # ghcr.io/loadsmith-el/loadsmith:slim
-./target/debug/loadsmith-lab run --tag v0.1.0-slim --select catalog/postgres-to-jsonl  # pin a version
+./target/debug/loadsmith-lab run --tag v0.2.0-slim --select catalog/postgres-to-jsonl  # pin a version
 ./target/debug/loadsmith-lab run --tag static --select catalog/postgres-to-jsonl       # another image flavor
 ```
 
@@ -46,10 +49,18 @@ plugins are static binaries, so they run in the distroless ones too.
 
 ## Plugins — a mounted cache, with `--plugin` overrides
 
-The loadsmith image is **slim** (core only); plugins are not bundled. The lab keeps
-a host plugin cache (`~/.cache/loadsmith-lab/plugins`), populated once by running
-`loadsmith plugin install --all` (the canonical set) in a throwaway container, and
-**mounts it into every run** at `/plugins` (`--plugin-dir /plugins`).
+The default image (`:slim`) is core-only. With any flavor, including `bundled`,
+the lab keeps a host plugin cache (`~/.cache/loadsmith-lab/plugins`), populated
+once by running `loadsmith plugin install --all` (the canonical set) in a
+throwaway container, and **mounts it into every run** at `/plugins`
+(`--plugin-dir /plugins`), which wins over plugins on `PATH`.
+
+The cache is filled only when the directory is empty and is never updated. To
+pick up new plugin releases, delete it; the next run reinstalls the canonical set:
+
+```bash
+rm -rf ~/.cache/loadsmith-lab/plugins
+```
 
 To test a plugin you're developing, override it with `--plugin <path>` (repeatable):
 

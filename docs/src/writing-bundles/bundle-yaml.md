@@ -38,7 +38,7 @@ Add a matching entry under `[bundles]` in
 
 ```yaml
 bundle:
-  name: string           # required — used in --select and the report
+  name: string           # required — used in the report and the hook image tag (--select uses the directory name)
   description: string    # optional — shown in the bundle header
 
 cases:
@@ -95,6 +95,9 @@ or anything else.
   bundle/case names but no output dir.
 - **`validate`** and **`cleanup`** run *after* the case, with the run's output
   directory bind-mounted at `/output` and also passed as the first argument.
+  Caveat: `cleanup` may run without an output dir — after a setup failure or a
+  case infra error there is no `/output`, no `argv[1]` and no
+  `LOADSMITH_LAB_OUTPUT_DIR`, so a cleanup script must cope with that.
 - **Exit code** is the verdict: `0` = pass, non-zero = fail.
 - stdout/stderr is streamed live into the report under the case.
 
@@ -130,7 +133,11 @@ loadsmith-lab bundle run --loadsmith ../loadsmith --all
 
 The shipped `catalog/parquet-destination` bundle is a complete worked example:
 it validates the parquet destination in both single-file and chunked modes,
-opening the produced files with pyarrow.
+opening the produced files with pyarrow. The catalog also ships
+`catalog/postgres-types` (checks the postgres source's type decoding
+value-by-value with pyarrow) and `catalog/tls-spike`, the minimal example of a
+bundle with no hooks: it just chains the TLS cases, and its Dockerfile is a
+single `FROM` line with no `scripts/`.
 
 For the exhaustive field list, see the
 [bundle.yaml schema reference](../reference/bundle-yaml-schema.md).

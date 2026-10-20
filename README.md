@@ -16,8 +16,10 @@ verification so a pipeline can be proven against a real database — not a mock.
 
 ## Why a separate lab
 
-- **Real services, not mocks.** A case runs against an actual `postgres:15`, seeded
-  with 100k rows, on an isolated Docker network.
+- **Real services, not mocks.** Database cases run against real Postgres 15,
+  MySQL 8 and Oracle Free containers, seeded with 100k rows, on an isolated
+  Docker network. The one exception is SharePoint: those cases hit a mock
+  Microsoft Graph endpoint (`lab-mock-graph`), so no real tenant is needed.
 - **Canonical data.** Every service is seeded from the same deterministic dataset
   (`spacecraft_telemetry_events`, 34 columns, seed = 42), so results are
   comparable across services and reproducible across machines.
@@ -46,7 +48,7 @@ loadsmith-lab-cli
 
 | Crate | Responsibility |
 |---|---|
-| `loadsmith-lab-cli` | the `loadsmith-lab` binary: `run`, `build`, `list`, `origin`, `install` |
+| `loadsmith-lab-cli` | the `loadsmith-lab` binary: `run`, `bundle`, `build`, `list`, `origin`, `install`, `uninstall` |
 | `loadsmith-lab-runner` | origins/resolution, parse cases, start services, run Loadsmith, validate |
 | `loadsmith-lab-docker` | image build/pull, container lifecycle, networks, TCP readiness |
 | `loadsmith-lab-report` | banner, framed Loadsmith output, pass/fail summary |
@@ -101,11 +103,12 @@ full origin/install model.
 1. create an isolated Docker network
 2. for each service: resolve image (cache → pull → build), start it
 3. wait for readiness — TCP open AND, for SQL services, a query probe
-     (so Loadsmith never connects before the 100k-row seed is loaded)
+     (`postgres:`, `mysql:` or `oracle:` in `readiness:`), so Loadsmith never
+     connects before the 100k-row seed is loaded
 4. run Loadsmith (a local core via --loadsmith, or a published image) against
      the service
-     · with a local core the service port is published and the pipeline's
-       hostname is rewritten to 127.0.0.1
+     · Loadsmith runs in a container on the same network and reaches the
+       service by its alias (e.g. pg). Nothing is rewritten.
 5. validate: exit status, output file exists, row counts match `expect`
 6. tear everything down and report
 ```
@@ -114,15 +117,16 @@ The result is framed under each case — Loadsmith's own report (version, progre
 summary) shown inline, then the lab's verdict:
 
 ```text
-loadsmith-lab 0.1.0  ·  local mode
+loadsmith-lab 0.1.0  ·  local loadsmith
 
-▶ postgres-to-jsonl  Reads 100k rows from PostgreSQL into JSONL
-  · pg ready · 127.0.0.1:15432 (2.0s)
-  │ loadsmith 0.1.0
+▶ catalog/postgres-to-jsonl  Reads 100k rows from PostgreSQL and writes them to JSONL
+  · waiting for pg at 172.18.0.2:5432…
+  · pg ready (2.0s)
+  │ loadsmith 0.2.0
   │ postgres → jsonl
-  │          2,000 rows · 1 batch
-  │          ...
-  │        100,000 rows · 50 batches
+  │ 2026-10-16T12:00:02.140321Z  INFO loadsmith_core::reporter: 2,000 rows · 1 batch
+  │ ...
+  │ 2026-10-16T12:00:05.410877Z  INFO loadsmith_core::reporter: 100,000 rows · 50 batches
   │ Status:       success
   │ Throughput:   31,888 rows/s
   ✓ postgres-to-jsonl   100,000 read · 100,000 written   5.6s
@@ -180,6 +184,10 @@ loadsmith-lab origin local add catalog ../loadsmith-lab-canonical-catalog   # re
 loadsmith-lab origin remote add team https://github.com/acme/cases.git   # register + clone a git repo
 loadsmith-lab origin show team                         # what an origin offers (its manifest)
 loadsmith-lab origin remote update --all               # git pull every remote origin
+loadsmith-lab origin remote list                       # remote origins only
+loadsmith-lab origin local list                        # local origins only
+loadsmith-lab origin remote rm team --purge            # deregister (--purge also deletes the clone)
+loadsmith-lab origin local rm catalog                  # deregister a local origin
 
 # Install (remote origins only; local origins need no install)
 loadsmith-lab install team/some-case                   # copy one item into the workdir
@@ -191,17 +199,24 @@ loadsmith-lab uninstall team/some-case
 loadsmith-lab run --loadsmith ../loadsmith --select catalog/postgres-to-jsonl   # run one case (local binary)
 loadsmith-lab run --all --loadsmith ../loadsmith                        # run every available case
 loadsmith-lab run --select catalog/postgres-to-jsonl   # run against a Loadsmith container
+loadsmith-lab run --select catalog/postgres-to-jsonl --tag v0.2.0-slim   # pin the published image tag
+loadsmith-lab run --select catalog/postgres-to-jsonl --plugin ../loadsmith-canonical-plugins/jsonl   # override a plugin (repeatable)
+loadsmith-lab run --cases-dir ./my-cases --select my-case   # ad-hoc: resolve from a dir, bypassing origins
 
 loadsmith-lab list                                     # list available (installed + local) cases
 loadsmith-lab list --available                         # also show not-yet-installed remote cases
+                                                       # (only remote origins already cloned, e.g. by `origin show catalog`)
+loadsmith-lab list --cases-dir ./my-cases              # list a bare dir of cases
 loadsmith-lab build --select images/lab-postgres-15        # build a service image explicitly
 
 loadsmith-lab bundle list                              # list available bundles
 loadsmith-lab bundle run --loadsmith ../loadsmith --select catalog/parquet-destination   # run a bundle
 loadsmith-lab bundle run --all --loadsmith ../loadsmith                 # run every bundle
+# bundle run also takes --tag and --plugin; bundle run/list take --bundles-dir <dir>
 
 # Global flags
---log-level debug    # forwarded to Loadsmith — shows the full protocol handshake inline
+--log-level debug    # default info; sets the lab's own log filter and is forwarded to
+                     # Loadsmith — at debug, shows the full protocol handshake inline
 --no-color           # plain output for log files / CloudWatch
 ```
 

@@ -77,7 +77,7 @@ struct BundleRunArgs {
     loadsmith: Option<PathBuf>,
 
     /// Version tag of the canonical published image
-    /// ghcr.io/loadsmith-el/loadsmith:<tag> (e.g. v0.1.0-slim; default: slim)
+    /// ghcr.io/loadsmith-el/loadsmith:<tag> (e.g. v0.2.0-slim; default: slim)
     #[arg(long)]
     tag: Option<String>,
 
@@ -117,7 +117,7 @@ struct RunArgs {
     loadsmith: Option<PathBuf>,
 
     /// Version tag of the canonical published image
-    /// ghcr.io/loadsmith-el/loadsmith:<tag> (e.g. v0.1.0-slim; default: slim)
+    /// ghcr.io/loadsmith-el/loadsmith:<tag> (e.g. v0.2.0-slim; default: slim)
     #[arg(long)]
     tag: Option<String>,
 

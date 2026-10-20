@@ -7,8 +7,10 @@ spacecraft telemetry**, generated deterministically with seed=42.
 
 A shared dataset ensures that every case tests against the same data. If you add
 a new destination plugin and write a lab case for it, you don't need to create a
-new database schema or generate new data — the Postgres image already has
-`spacecraft_telemetry_events` loaded. Your case just reads from it.
+new database schema or generate new data — the service images already have
+`spacecraft_telemetry_events` loaded: `lab-postgres-15`, `lab-mysql-8` and
+`lab-oracle` as a table, and `lab-mock-graph` as a CSV download and as SharePoint
+List items. Your case just reads from it.
 
 This also means that correctness is cross-validatable: if `catalog/postgres-to-jsonl`
 produces 100,000 rows and `catalog/postgres-to-parquet-chunked` also produces 100,000
@@ -67,6 +69,8 @@ Null rates per column group:
 | `received_at` | ~10% |
 | `raw_payload_json` | ~40% |
 | `checksum` | ~5% |
+| `operator_notes` | ~30% |
+| `tags` | ~25% (rows with zero tags) |
 | `deleted_at` | ~92% |
 | All others | 0% (NOT NULL) |
 

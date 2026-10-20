@@ -13,11 +13,16 @@ ls-lab-3f2a1c8e4b7d9f0a2e5c
 ```
 
 All service containers are attached to this network, and loadsmith runs on it too,
-so loadsmith reaches services by their alias hostnames. Because each run gets its
-own network, multiple cases can run simultaneously without interfering.
+so loadsmith reaches services by their alias hostnames. Service containers are
+also *named* after their alias (e.g. `pg`), and container names are global to the
+Docker daemon, so concurrent runs whose cases share a service alias are not
+supported: the second one fails to create its container, and teardown's
+by-alias fallback could remove the other run's container.
 
-The network is removed after teardown, even if the run fails — cleanup is
-registered via `scopeguard::defer` before any containers are started.
+The network is removed after teardown, even if the run fails: the case body runs
+in `run_case_inner` and its `Result` is captured, then the service containers (by
+ID, then by alias) and the network are always removed before the result is
+returned. This covers errors, not panics.
 
 ## Container lifecycle
 
@@ -28,7 +33,8 @@ For each service declared in `case.yaml`:
    that origin's build context and derives the local tag
    `loadsmith-lab/<origin>/<name>:local`, then tries in order:
    - Local Docker cache (image already exists): instant
-   - Pull from registry: `docker pull <tag>`
+   - Pull from registry: `docker pull <tag>` — always fails today and falls
+     through to the build, since the `:local` tag is never in a registry
    - Build from the resolved `Dockerfile`: auto-builds the first time
 
 2. **Start** — `docker run` with:
@@ -39,8 +45,11 @@ For each service declared in `case.yaml`:
 3. **Readiness wait** — two levels, probed from the host against the container's
    bridge IP on the case network (the alias is only resolvable inside Docker):
    - TCP: poll `TcpStream::connect` every 500 ms until the port accepts connections
-   - Postgres query (optional): connect to the database and run a probe query
-     until it returns at least one row
+   - Query probe (optional): `postgres:` or `mysql:` (`dbname`, `user`,
+     `password`, `probe_query`, default `SELECT 1`) or `oracle:` (`service_name`,
+     `user`, `password`, `probe_query`, default `SELECT 1 FROM dual`) — connect
+     and run the probe query every 2 s until it returns at least one row
+   - Each stage gets its own `timeout_seconds` (default 60)
 
 4. **Teardown** — `docker stop` then `docker rm --force -v`. This runs
    unconditionally after the case finishes; `-v` also removes the container's
@@ -78,8 +87,10 @@ images/lab-postgres-15  →  context loadsmith-lab-canonical-images/images/lab-p
 ```
 
 The item name *is* the directory name — no prefix stripping. The slash-separated
-tag lines up with a future registry-qualified tag (`<registry>/<origin>/<name>`)
-once images are published via CI.
+tag lines up with a registry-qualified tag (`<registry>/<origin>/<name>`). The
+canonical images are already published by the `loadsmith-lab-canonical-images` CI
+as `ghcr.io/loadsmith-el/<name>`, but the lab does not consume them yet: it always
+builds locally.
 
 ## Build context and seed data
 
@@ -123,14 +134,15 @@ Loadsmith always runs in a container. Its image is resolved by
   `target/`, `.git/`, `docs/`, `definitions/`. (`--loadsmith <binary>` instead
   wraps the binary in a minimal `bookworm-slim` image.) Note: bollard's classic builder does
   **not** honor `.dockerignore` (the tar is already assembled), so the exclusion
-  must happen in the Rust walker. The build is hermetic (compiles inside Docker on a
-  Debian base, ships on a matching Debian runtime), so it is correct regardless of
-  the host's glibc.
+  must happen in the Rust walker. The build is hermetic (compiles a static musl
+  binary inside `rust:1-alpine`, cargo-chef cached, and ships it on the
+  Dockerfile's default `slim` target), so it is correct regardless of the host's
+  glibc.
 
 - **default** — pulls the canonical published image
-  `ghcr.io/loadsmith-el/loadsmith` (`--tag <t>` picks the version, a case may
-  override the full ref via `loadsmith.image`, else the rolling `:slim`) via
-  cache → pull, erroring clearly if absent.
+  `ghcr.io/loadsmith-el/loadsmith` (precedence: `--tag <t>` > a case's
+  `loadsmith.image` > the rolling `:slim`) via cache → pull, erroring clearly if
+  absent.
 
 The loadsmith container is started on the case network with the output dir mounted
 at `/output` and driven with

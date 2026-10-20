@@ -70,8 +70,7 @@ rules. Two origins can ship the same name with no conflict.
 - **Local origin** (path) — registered with `origin local add <name> <path>`,
   read **live** in place. No clone, no install, no copy — edits take effect
   immediately. This is the dev workflow (register the sibling catalog/images
-  checkouts). `generate` only works against a local origin (it rewrites the
-  CSV in place).
+  checkouts).
 
 Config lives in `~/.config/loadsmith-lab/origins.toml`. The `catalog`/`images`
 defaults are seeded there on first run (as remote git origins) but not cloned
@@ -93,25 +92,29 @@ until first use.
         then resolve the image (cache → pull → build that context)
      b. start container
      c. wait for TCP port to be open
-     d. if postgres readiness configured: wait for probe_query to return rows
+     d. if a postgres/mysql/oracle readiness probe is configured: wait for its
+        probe_query to return rows (postgres/mysql: dbname/user/password;
+        oracle: service_name/user/password)
 4. resolve the loadsmith image:
      --loadsmith <dir>:    build loadsmith:local from that project's Dockerfile
      --loadsmith <binary>: wrap the binary in a minimal image
      default:              pull the canonical image ghcr.io/loadsmith-el/loadsmith
-                           (--tag <t> picks the version, else :slim)
+                           (--tag <t> > case loadsmith.image > :slim)
    then prepare the plugin dir: the cached canonical set (loadsmith plugin
    install --all) plus any --plugin overlays (binary, or a crate/workspace built
    as static musl in a rust:1-alpine container)
 5. run loadsmith in a container on the network, mounting the pipeline + /output +
    the plugin dir at /plugins; stream its output through the gutter live
-6. validate expectations (exit code, row counts, output file)
-7. tear down containers
-8. tear down network
+6. tear down containers
+7. tear down network
+8. validate expectations (exit code, row counts, output file)
 9. return CaseResult
 ```
 
-Teardown happens via `scopeguard::defer` — even if any step panics or returns
-an error, the network and containers are cleaned up.
+Steps 3–5 run in `run_case_inner`, whose `Result` is captured; teardown then
+always removes the service containers (by ID, then by alias) and the network,
+whether those steps succeeded or returned an error. Expectations are validated
+after teardown. A panic is not covered.
 
 ## Key data structures
 
@@ -120,7 +123,8 @@ an error, the network and containers are cleaned up.
 pub struct Case {
     pub case: CaseMeta,
     pub services: Vec<ServiceDef>,
-    pub loadsmith: LoadsmithDef,
+    #[serde(default)]
+    pub loadsmith: LoadsmithDef,      // optional block: image, volumes, env, docker_args
     pub pipeline: PipelineDef,
     pub expect: Expect,
 }
@@ -148,7 +152,11 @@ pub struct CaseResult {
     pub rows_read: Option<u64>,
     pub rows_written: Option<u64>,
     pub prep_lines: Vec<String>,      // image build/pull messages, readiness status
-    pub loadsmith_output: String,     // loadsmith's stdout, shown framed
+    pub loadsmith_output: String,     // loadsmith's output, shown framed
     pub failures: Vec<String>,        // what assertions failed
+    pub output_dir: PathBuf,          // host side of /output, for bundle hooks
 }
 ```
+
+`run_case` leaves `prep_lines` and `loadsmith_output` empty: both are streamed
+live (loadsmith's combined stdout and stderr) as the case runs.

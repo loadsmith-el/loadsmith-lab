@@ -6,7 +6,9 @@ Complete field reference for `bundle.yaml` files. See
 ```yaml
 # ─── Bundle metadata ──────────────────────────────────────────────────────────
 bundle:
-  name: string           # required — unique identifier used in --select and reports
+  name: string           # required — names the hook image
+                         #   (loadsmith-lab-bundle-<name>:local), the header and
+                         #   the summary; --select uses <origin>/<directory-name>
   description: string    # optional — shown in the bundle header during a run
 
 # ─── Case sequence ────────────────────────────────────────────────────────────
@@ -23,17 +25,19 @@ cases:
 
     cleanup: string      # optional — script path INSIDE the bundle image, always
                          #   run at the end of the entry. Gets /output like
-                         #   validate. A failure here is a warning, not a fail.
+                         #   validate, but only if the case actually ran (not
+                         #   after a setup failure or a case infra error).
+                         #   A failure here is a warning, not a fail.
 ```
 
 ## Companion files
 
-A bundle directory must also contain:
+Besides `bundle.yaml`, a bundle directory contains:
 
-| File | Purpose |
-|---|---|
-| `Dockerfile` | Builds `loadsmith-lab-bundle-<name>:local`, the image hooks run in. Bake in any interpreter/deps the hooks need and `COPY scripts/ /scripts/`. |
-| `scripts/` | The setup/validate/cleanup scripts, made executable in the image. |
+| File | Required | Purpose |
+|---|---|---|
+| `Dockerfile` | always | Builds `loadsmith-lab-bundle-<name>:local`, the image hooks run in (it is built on every run, even with no hooks). Bake in any interpreter/deps the hooks need and `COPY scripts/ /scripts/`. |
+| `scripts/` | only with hooks | The setup/validate/cleanup scripts, made executable in the image. A hookless bundle (e.g. `catalog/tls-spike`, whose Dockerfile is just `FROM debian:12-slim`) needs none. |
 
 ## Hook environment & arguments
 
@@ -44,6 +48,12 @@ A bundle directory must also contain:
 | `LOADSMITH_LAB_OUTPUT_DIR` (env) | — | `/output` |
 | output dir bind mount | — | host run dir → `/output` |
 | `argv[1]` | — | `/output` |
+
+The `/output` mount, `LOADSMITH_LAB_OUTPUT_DIR` and `argv[1]` are provided to
+`validate`/`cleanup` only when the case run produced a result (it may still have
+failed its `expect`). If setup failed, the case reference didn't resolve, or the
+case errored before producing a result, `cleanup` runs without any of them, so a
+cleanup script must handle a missing `/output`.
 
 A hook's exit code is its verdict: `0` = pass, non-zero = fail.
 
@@ -65,5 +75,5 @@ A hook's exit code is its verdict: `0` = pass, non-zero = fail.
 - `cleanup` **always** runs; a non-zero exit is reported as a warning and does
   **not** fail the entry.
 - The bundle runs **every** entry regardless of earlier failures, then prints an
-  aggregated `N passed, M failed` summary. The process exit code is `0` only if
+  aggregated `<bundle> — N passed, M failed` summary. The process exit code is `0` only if
   every entry passed.

@@ -3,6 +3,14 @@
 The `spacecraft_telemetry_events` table has 34 columns. The table definition
 below is the canonical SQL schema as created by `images/lab-postgres-15/init.sql`.
 
+`lab-mysql-8` and `lab-oracle` create their own versions of the same table, with
+MySQL and Oracle column types and their own load mechanics; see each image's
+`init.sql` for the exact DDL:
+[`lab-mysql-8/init.sql`](https://github.com/loadsmith-el/loadsmith-lab-canonical-images/blob/main/images/lab-mysql-8/init.sql)
+and
+[`lab-oracle/init.sql`](https://github.com/loadsmith-el/loadsmith-lab-canonical-images/blob/main/images/lab-oracle/init.sql).
+The column and type mapping below is the Postgres one.
+
 ## Table definition
 
 ```sql
@@ -51,7 +59,7 @@ CREATE TABLE spacecraft_telemetry_events (
     -- Payload and notes
     operator_notes   TEXT,                           -- ~30% null
     raw_payload_json TEXT,                           -- ~40% null
-    tags             TEXT,                           -- comma-separated; ~30% null
+    tags             TEXT,                           -- comma-separated; ~25% null
     checksum         CHAR(64),                       -- SHA-256 hex; ~5% null
 
     -- Audit timestamps
@@ -74,7 +82,7 @@ CREATE INDEX idx_timestamp   ON spacecraft_telemetry_events (event_timestamp);
 
 | # | Column | Postgres type | Arrow type | Nullable | Description |
 |---|---|---|---|---|---|
-| 1 | `id` | `VARCHAR(36)` | `Utf8` | No | UUID v4 string |
+| 1 | `id` | `VARCHAR(36)` | `Utf8` | No | UUID-formatted string from 128 seeded random bits (not RFC v4) |
 | 2 | `spacecraft_id` | `VARCHAR(50)` | `Utf8` | No | SC-001 … SC-020 |
 | 3 | `mission_id` | `VARCHAR(50)` | `Utf8` | No | MISSION-ALPHA … MISSION-EPSILON |
 | 4 | `event_sequence` | `BIGINT` | `Int64` | No | 1–100,000, unique per row |
@@ -101,10 +109,10 @@ CREATE INDEX idx_timestamp   ON spacecraft_telemetry_events (event_timestamp);
 | 25 | `radiation_level` | `DECIMAL(10,5)` | `Utf8` | Yes (~30%) | 0.0–100.0 |
 | 26 | `battery_percent` | `DECIMAL(5,2)` | `Utf8` | Yes (~30%) | 0.0–100.0 |
 | 27 | `payload_mass_kg` | `DECIMAL(10,3)` | `Utf8` | Yes (~30%) | 100–5,000 kg |
-| 28 | `operator_notes` | `TEXT` | `Utf8` | Yes (~30%) | Free-form Faker sentence |
+| 28 | `operator_notes` | `TEXT` | `Utf8` | Yes (~30%) | Templated note: `Note from operator N about <sensor_name>` (N = 1–20) |
 | 29 | `raw_payload_json` | `TEXT` | `Utf8` | Yes (~40%) | Simulated JSON payload string |
-| 30 | `tags` | `TEXT` | `Utf8` | Yes (~30%) | Comma-separated from pool of 8 |
-| 31 | `checksum` | `CHAR(64)` | `Utf8` | Yes (~5%) | SHA-256 hex of `id + event_sequence` |
+| 30 | `tags` | `TEXT` | `Utf8` | Yes (~25%) | Comma-separated from pool of 8 (rows with zero tags are NULL) |
+| 31 | `checksum` | `CHAR(64)` | `Utf8` | Yes (~5%) | SHA-256 hex of `id` concatenated with `event_sequence - 1` (the 0-based row index) |
 | 32 | `created_at` | `TIMESTAMP` | `Timestamp(ms)` | No | Same as `event_timestamp` |
 | 33 | `updated_at` | `TIMESTAMP` | `Timestamp(ms)` | No | `created_at` + 0–3,600s |
 | 34 | `deleted_at` | `TIMESTAMP` | `Timestamp(ms)` | Yes (~92%) | `created_at` + 1–365 days when set |
@@ -120,15 +128,16 @@ CREATE INDEX idx_timestamp   ON spacecraft_telemetry_events (event_timestamp);
 | Type | Sensor names |
 |---|---|
 | THERMAL | core_temp, hull_temp, engine_temp, solar_panel_temp |
-| RADIATION | gamma_detector, neutron_flux, cosmic_ray_counter, alpha_particle_sensor |
-| POWER | main_bus_voltage, battery_cell_1, solar_array_output, power_regulator |
-| NAVIGATION | gyroscope_x, gyroscope_y, star_tracker, inertial_nav_unit |
-| COMMS | uplink_signal, downlink_signal, antenna_temperature, transponder_power |
+| RADIATION | cosmic_ray_counter, gamma_detector, xray_sensor |
+| POWER | solar_output, battery_monitor, power_bus_voltage |
+| NAVIGATION | gps_receiver, star_tracker, imu_sensor, gyroscope |
+| COMMS | antenna_signal, transponder, uplink_receiver |
 
 **Severities (weighted):** LOW (60%), MEDIUM (25%), HIGH (10%), CRITICAL (5%)
 
 **Tags pool:** `nominal`, `anomaly`, `warning`, `science`, `maintenance`, `downlink`, `uplink`, `attitude`
-Each row gets 0–3 randomly chosen tags, stored as a comma-separated string.
+Each row gets 0–3 randomly chosen tags, stored as a comma-separated string (NULL
+when it gets none).
 
 ## Why DECIMAL columns are Utf8 in Arrow
 

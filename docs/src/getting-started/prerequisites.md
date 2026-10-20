@@ -4,6 +4,8 @@
 
 - **Docker** — the Docker daemon must be running. Verify with `docker info`.
 - **Rust toolchain** (stable) — install via [rustup.rs](https://rustup.rs).
+- **git** — used to clone and update remote origins (including the default
+  `catalog`/`images` origins when they aren't registered as local paths).
 - **A local loadsmith / plugins checkout** (optional) — if you'll run with
   `--loadsmith <path>` / `--plugin <path>`. A project dir is built inside Docker
   (binaries are never copied from the host), so no host pre-build is required.
@@ -64,12 +66,17 @@ docker info
 On the first run, the lab builds two images automatically: the `images/lab-postgres-15`
 image (tagged `loadsmith-lab/images/lab-postgres-15:local`, seeds 100,000 rows, ~2–3 min)
 and, because of `--loadsmith`, `loadsmith:local` from the source tree (cargo-chef
-cooks dependencies once, then caches them). Subsequent runs reuse both cached
-layers and start quickly.
+cooks dependencies once, then caches them). It also fills the plugin cache
+(`~/.cache/loadsmith-lab/plugins`) by running `loadsmith plugin install --all` in a
+container, which downloads every canonical plugin. Subsequent runs reuse the
+cached images and plugins and start quickly.
 
-> **Network note:** a *fresh* image build clones `loadsmith-lab-canonical-data` to
-> generate the seed CSV, so the first build of an image needs network access.
-> Cached images and every case *run* are fully offline.
+> **Network note:** the first run needs network access: a *fresh* image build
+> clones `loadsmith-lab-canonical-data` to generate the seed CSV, the plugin cache
+> is downloaded, a run without `--loadsmith` pulls
+> `ghcr.io/loadsmith-el/loadsmith:slim`, a `--plugin` project build pulls
+> `rust:1-alpine` and fetches crates, and remote origins are git-cloned on first
+> use. Once all of that is cached, runs are offline.
 
 ## Optional: Python (for previewing test data)
 
