@@ -117,6 +117,26 @@ pub struct Expect {
     pub rows_read: Option<u64>,
     pub rows_written: Option<u64>,
     pub output: Option<OutputExpect>,
+    /// Assertions on the loadsmith container's captured output (stdout,
+    /// stderr and the JSON run summary) — e.g. that a secret never leaks.
+    #[serde(default)]
+    pub logs: Option<LogsExpect>,
+}
+
+/// `expect.logs`: substrings that must (`contains`) or must not
+/// (`not_contains`) appear in the loadsmith container's output. ANSI escapes
+/// are stripped before matching. Unknown keys are rejected: a typo in a leak
+/// check must not silently turn it off.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LogsExpect {
+    /// Each must appear in at least one of stdout, stderr or the run summary.
+    #[serde(default)]
+    pub contains: Vec<String>,
+    /// None may appear in any of stdout, stderr or the run summary. Treated as
+    /// secrets: never printed in full by the lab.
+    #[serde(default)]
+    pub not_contains: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -130,4 +150,33 @@ pub fn load_case(path: &std::path::Path) -> anyhow::Result<Case> {
         .map_err(|e| anyhow::anyhow!("cannot read case file {}: {e}", path.display()))?;
     serde_yaml::from_str(&content)
         .map_err(|e| anyhow::anyhow!("invalid case.yaml at {}: {e}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(expect: &str) -> Result<Expect, serde_yaml::Error> {
+        serde_yaml::from_str(expect)
+    }
+
+    #[test]
+    fn logs_expectation_is_optional_and_parsed() {
+        assert!(parse("status: success\n").unwrap().logs.is_none());
+        let e = parse(
+            "status: success\nlogs:\n  not_contains: [\"s3cr3t\", \"BEGIN PRIVATE KEY\"]\n  contains: [\"schema negotiated\"]\n",
+        )
+        .unwrap();
+        let logs = e.logs.unwrap();
+        assert_eq!(logs.not_contains, vec!["s3cr3t", "BEGIN PRIVATE KEY"]);
+        assert_eq!(logs.contains, vec!["schema negotiated"]);
+        // Either list alone is fine.
+        assert!(parse("status: success\nlogs:\n  contains: [x]\n").unwrap().logs.unwrap().not_contains.is_empty());
+    }
+
+    #[test]
+    fn logs_typo_is_rejected() {
+        // A misspelt leak check must fail loudly, not silently pass.
+        assert!(parse("status: success\nlogs:\n  not_contain: [\"s3cr3t\"]\n").is_err());
+    }
 }

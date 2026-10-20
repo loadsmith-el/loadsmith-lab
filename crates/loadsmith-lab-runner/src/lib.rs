@@ -1,6 +1,7 @@
 pub mod bundle;
 pub mod case;
 pub mod image;
+pub mod logs;
 pub mod origin;
 pub mod runner;
 pub mod summary;

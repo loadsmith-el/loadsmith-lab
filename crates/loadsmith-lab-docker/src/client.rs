@@ -295,14 +295,15 @@ impl DockerClient {
         Ok(out)
     }
 
-    /// Follows the container's combined stdout+stderr in real time, invoking
-    /// `on_line` for each complete line as it arrives, and returns the full
-    /// accumulated text once the stream ends (i.e. when the container exits).
+    /// Follows the container's stdout and stderr in real time, invoking
+    /// `on_line` for each complete line as it arrives (both streams, in arrival
+    /// order), and returns everything captured once the stream ends (i.e. when
+    /// the container exits) — combined and per stream.
     ///
     /// Docker log chunks do not align with line boundaries, so partial lines are
     /// buffered until a newline arrives.
-    pub async fn stream_logs<F: FnMut(&str)>(&self, id: &str, mut on_line: F) -> Result<String> {
-        use bollard::container::LogsOptions;
+    pub async fn stream_logs<F: FnMut(&str)>(&self, id: &str, mut on_line: F) -> Result<CapturedLogs> {
+        use bollard::container::{LogOutput, LogsOptions};
         use futures_util::StreamExt;
 
         let opts = LogsOptions::<String> {
@@ -313,11 +314,18 @@ impl DockerClient {
         };
         let mut stream = self.inner.logs(id, Some(opts));
 
-        let mut acc = String::new();
+        let mut acc = CapturedLogs::default();
         let mut buf = String::new();
         while let Some(item) = stream.next().await {
-            let chunk = item?.to_string();
-            acc.push_str(&chunk);
+            let item = item?;
+            let chunk = item.to_string();
+            acc.combined.push_str(&chunk);
+            match item {
+                LogOutput::StdErr { .. } => acc.stderr.push_str(&chunk),
+                // A TTY container multiplexes nothing: it is all `Console`.
+                LogOutput::StdOut { .. } | LogOutput::Console { .. } => acc.stdout.push_str(&chunk),
+                LogOutput::StdIn { .. } => {}
+            }
             buf.push_str(&chunk);
             // Emit every complete line; keep the trailing partial in `buf`.
             while let Some(nl) = buf.find('\n') {
@@ -331,6 +339,15 @@ impl DockerClient {
         }
         Ok(acc)
     }
+}
+
+/// A finished container's output, as captured by [`DockerClient::stream_logs`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CapturedLogs {
+    /// stdout and stderr interleaved in arrival order.
+    pub combined: String,
+    pub stdout: String,
+    pub stderr: String,
 }
 
 /// Builds an in-memory tar of a source tree at `root`, suitable as a Docker

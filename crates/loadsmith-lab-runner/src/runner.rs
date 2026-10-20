@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::case::{load_case, Case, Expect, MysqlReadiness, OracleReadiness, PostgresReadiness};
 use crate::image::{prepare_plugin_dir, resolve_image, resolve_loadsmith_image};
+use crate::logs::{check_logs, Captured, Masker};
 use crate::origin::{image_tag, resolve_item, Config, Kind};
 use crate::summary::{
     supports_summary_file, Observed, SUMMARY_FILE, SUMMARY_MOUNT, SUMMARY_VERSION,
@@ -83,7 +84,7 @@ pub async fn run_case(case_path: &Path, opts: &RunOpts) -> Result<CaseResult> {
     }
     let _ = docker.remove_network(&net_name).await;
 
-    let observed = match inner {
+    let (observed, captured) = match inner {
         Ok(v) => v,
         Err(e) => {
             // On success the caller drops it after validation (bundle hooks
@@ -94,7 +95,13 @@ pub async fn run_case(case_path: &Path, opts: &RunOpts) -> Result<CaseResult> {
     };
 
     let duration = start.elapsed();
-    let failures = validate_expects(&case.expect, &observed, &output_dir);
+    let mut failures = validate_expects(&case.expect, &observed, &output_dir);
+    if let Some(logs) = &case.expect.logs {
+        failures.extend(check_logs(logs, &captured));
+    }
+    // A leaked secret may also surface in e.g. the `cause:` line: never echo it.
+    let masker = Masker::new(case.expect.logs.as_ref());
+    let failures = failures.into_iter().map(|f| masker.mask(&f).into_owned()).collect::<Vec<_>>();
 
     Ok(CaseResult {
         name: case.case.name.clone(),
@@ -123,7 +130,7 @@ async fn run_case_inner(
     net_name: &str,
     output_dir: &Path,
     svc_ids: &mut Vec<String>,
-) -> Result<Observed> {
+) -> Result<(Observed, Captured)> {
     for svc in &case.services {
         // The case references its service image as an origin item
         // (`<origin>/<name>`); resolve the build context and derive the local
@@ -191,7 +198,8 @@ async fn run_case_inner(
 /// Runs loadsmith in a container on the case network and returns what it
 /// reported. Logs are streamed to the gutter in real time; the outcome comes
 /// from the JSON run summary (`--summary-file`) when the engine supports it,
-/// else from the human report in those logs.
+/// else from the human report in those logs. The captured output is returned
+/// alongside, for `expect.logs`.
 async fn run_container(
     docker: &DockerClient,
     case: &Case,
@@ -199,7 +207,7 @@ async fn run_container(
     case_dir: &Path,
     net_name: &str,
     output_dir: &Path,
-) -> Result<Observed> {
+) -> Result<(Observed, Captured)> {
     // Build/wrap a local core (--loadsmith) or pull the canonical published image.
     let image = resolve_loadsmith_image(docker, opts, case).await?;
 
@@ -276,18 +284,29 @@ async fn run_container(
             user: crate::image::host_user(),
         }).await?;
 
-        // Stream the container's combined output through the gutter live, and
-        // keep the full text for the fallback parser. The stream ends when the
+        // Stream the container's output through the gutter live (with any
+        // `expect.logs.not_contains` secret masked), and keep the full text
+        // for the fallback parser and `expect.logs`. The stream ends when the
         // container exits, after which wait_container returns immediately.
-        let logs = docker.stream_logs(&id, print_gutter_line).await.unwrap_or_default();
+        let masker = Masker::new(case.expect.logs.as_ref());
+        let logs = docker
+            .stream_logs(&id, |line| print_gutter_line(&masker.mask(line)))
+            .await
+            .unwrap_or_default();
         let exit_code = docker.wait_container(&id).await?;
         let _ = docker.stop_and_remove(&id).await;
 
         // Kept beside the outputs for anyone inspecting a run by hand.
-        std::fs::write(output_dir.join("loadsmith.stdout"), logs.as_bytes())?;
+        std::fs::write(output_dir.join("loadsmith.stdout"), logs.combined.as_bytes())?;
 
         let summary_path = summary_dir.as_ref().map(|d| d.join(SUMMARY_FILE));
-        Ok(Observed::read(exit_code, summary_path.as_deref(), &logs))
+        let observed = Observed::read(exit_code, summary_path.as_deref(), &logs.combined);
+        let captured = Captured {
+            summary: summary_path.and_then(|p| std::fs::read_to_string(p).ok()),
+            stdout: logs.stdout,
+            stderr: logs.stderr,
+        };
+        Ok((observed, captured))
     }
     .await;
 
@@ -509,7 +528,7 @@ Cause:        source error: connection refused
 ";
 
     fn expect(status: &str, rows: Option<u64>) -> Expect {
-        Expect { status: status.into(), exit_code: None, rows_read: rows, rows_written: rows, output: None }
+        Expect { status: status.into(), exit_code: None, rows_read: rows, rows_written: rows, output: None, logs: None }
     }
 
     fn text(stdout: &str, exit_code: i64) -> Observed {
