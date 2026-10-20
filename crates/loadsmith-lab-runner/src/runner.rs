@@ -10,6 +10,9 @@ use uuid::Uuid;
 use crate::case::{load_case, Case, Expect, MysqlReadiness, OracleReadiness, PostgresReadiness};
 use crate::image::{prepare_plugin_dir, resolve_image, resolve_loadsmith_image};
 use crate::origin::{image_tag, resolve_item, Config, Kind};
+use crate::summary::{
+    supports_summary_file, Observed, SUMMARY_FILE, SUMMARY_MOUNT, SUMMARY_VERSION,
+};
 
 pub struct RunOpts {
     /// The loadsmith core to run, when given: a path to a binary (wrapped in a
@@ -80,7 +83,7 @@ pub async fn run_case(case_path: &Path, opts: &RunOpts) -> Result<CaseResult> {
     }
     let _ = docker.remove_network(&net_name).await;
 
-    let (exit_code, loadsmith_stdout) = match inner {
+    let observed = match inner {
         Ok(v) => v,
         Err(e) => {
             // On success the caller drops it after validation (bundle hooks
@@ -91,13 +94,6 @@ pub async fn run_case(case_path: &Path, opts: &RunOpts) -> Result<CaseResult> {
     };
 
     let duration = start.elapsed();
-    let (rows_read, rows_written) = parse_rows_from_stdout(&loadsmith_stdout);
-    let observed = Observed {
-        exit_code,
-        summary_status: parse_summary_status(&loadsmith_stdout),
-        rows_read,
-        rows_written,
-    };
     let failures = validate_expects(&case.expect, &observed, &output_dir);
 
     Ok(CaseResult {
@@ -105,8 +101,9 @@ pub async fn run_case(case_path: &Path, opts: &RunOpts) -> Result<CaseResult> {
         description: case.case.description.clone(),
         passed: failures.is_empty(),
         duration,
-        rows_read,
-        rows_written,
+        rows_read: observed.rows_read,
+        rows_written: observed.rows_written,
+        route: observed.route_line(),
         // Prep lines and output were already printed live; leave empty so
         // print_result only prints the verdict.
         prep_lines: vec![],
@@ -126,7 +123,7 @@ async fn run_case_inner(
     net_name: &str,
     output_dir: &Path,
     svc_ids: &mut Vec<String>,
-) -> Result<(i64, String)> {
+) -> Result<Observed> {
     for svc in &case.services {
         // The case references its service image as an origin item
         // (`<origin>/<name>`); resolve the build context and derive the local
@@ -191,8 +188,10 @@ async fn run_case_inner(
     run_container(docker, case, opts, case_dir, net_name, output_dir).await
 }
 
-/// Runs loadsmith in a container on the case network and returns
-/// `(exit_code, combined_logs)`. Logs are streamed to the gutter in real time.
+/// Runs loadsmith in a container on the case network and returns what it
+/// reported. Logs are streamed to the gutter in real time; the outcome comes
+/// from the JSON run summary (`--summary-file`) when the engine supports it,
+/// else from the human report in those logs.
 async fn run_container(
     docker: &DockerClient,
     case: &Case,
@@ -200,7 +199,7 @@ async fn run_container(
     case_dir: &Path,
     net_name: &str,
     output_dir: &Path,
-) -> Result<(i64, String)> {
+) -> Result<Observed> {
     // Build/wrap a local core (--loadsmith) or pull the canonical published image.
     let image = resolve_loadsmith_image(docker, opts, case).await?;
 
@@ -236,7 +235,7 @@ async fn run_container(
     }
 
     // ENTRYPOINT is `loadsmith`; we supply the run command + flags as CMD.
-    let cmd = vec![
+    let mut cmd = vec![
         "run".to_string(),
         "/case/pipeline.yaml".to_string(),
         "--plugin-dir".to_string(),
@@ -245,56 +244,99 @@ async fn run_container(
         opts.log_level.clone(),
     ];
 
-    let id = docker.run_container(ContainerConfig {
-        image,
-        hostname: None,
-        network: Some(net_name.to_string()),
-        env,
-        binds,
-        publish_ports: vec![],
-        cmd,
-        docker_args: case.loadsmith.docker_args.clone(),
-        // Writes /output (a host bind mount): run as the host user so the
-        // outputs aren't root-owned and can be cleaned up.
-        user: crate::image::host_user(),
-    }).await?;
+    // The machine-readable run summary goes to its own scratch mount (not
+    // /output, which belongs to the pipeline and the bundle hooks); stdout
+    // keeps the human report for the gutter. Engines older than the flag
+    // (e.g. the published v0.2.0) would reject it with a usage error, so it
+    // is only passed when `run --help` lists it.
+    let summary_dir = if supports_summary_file(docker, &image).await {
+        let dir = std::env::temp_dir().join(format!("ls-lab-summary-{}", Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir)?;
+        binds.push(format!("{}:{SUMMARY_MOUNT}", dir.display()));
+        cmd.push("--summary-file".to_string());
+        cmd.push(format!("{SUMMARY_MOUNT}/{SUMMARY_FILE}"));
+        Some(dir)
+    } else {
+        print_prep_line("loadsmith image predates --summary-file; reading its human report");
+        None
+    };
 
-    // Stream the container's combined output through the gutter live, and keep
-    // the full text for row-count parsing. The stream ends when the container
-    // exits, after which wait_container returns the exit code immediately.
-    let logs = docker.stream_logs(&id, print_gutter_line).await.unwrap_or_default();
-    let exit_code = docker.wait_container(&id).await?;
-    let _ = docker.stop_and_remove(&id).await;
+    let result = async {
+        let id = docker.run_container(ContainerConfig {
+            image,
+            hostname: None,
+            network: Some(net_name.to_string()),
+            env,
+            binds,
+            publish_ports: vec![],
+            cmd,
+            docker_args: case.loadsmith.docker_args.clone(),
+            // Writes /output and the summary dir (host bind mounts): run as the
+            // host user so the files aren't root-owned and can be cleaned up.
+            user: crate::image::host_user(),
+        }).await?;
 
-    // Save logs for row-count parsing (parse_rows_from_stdout reads from here).
-    std::fs::write(output_dir.join("loadsmith.stdout"), logs.as_bytes())?;
+        // Stream the container's combined output through the gutter live, and
+        // keep the full text for the fallback parser. The stream ends when the
+        // container exits, after which wait_container returns immediately.
+        let logs = docker.stream_logs(&id, print_gutter_line).await.unwrap_or_default();
+        let exit_code = docker.wait_container(&id).await?;
+        let _ = docker.stop_and_remove(&id).await;
 
-    Ok((exit_code, logs))
-}
+        // Kept beside the outputs for anyone inspecting a run by hand.
+        std::fs::write(output_dir.join("loadsmith.stdout"), logs.as_bytes())?;
 
-/// What a loadsmith run reported, as checked against a case's `expect:`.
-struct Observed {
-    exit_code: i64,
-    /// The summary box's `Status:` value (`success`/`error`), when printed.
-    summary_status: Option<String>,
-    rows_read: Option<u64>,
-    rows_written: Option<u64>,
+        let summary_path = summary_dir.as_ref().map(|d| d.join(SUMMARY_FILE));
+        Ok(Observed::read(exit_code, summary_path.as_deref(), &logs))
+    }
+    .await;
+
+    if let Some(dir) = &summary_dir {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    result
 }
 
 fn validate_expects(expect: &Expect, observed: &Observed, output_dir: &Path) -> Vec<String> {
     let mut failures = Vec::new();
 
-    // Success needs BOTH a zero exit and (when printed) a `Status: success`
-    // summary — older cores exited 0 even when the pipeline ended in error.
+    if let Some(v) = observed.unsupported_version {
+        failures.push(format!(
+            "run summary: version {v} is not supported (this lab reads version {SUMMARY_VERSION})"
+        ));
+    }
+
+    // Success needs BOTH a zero exit and (when known) a `success` status —
+    // older cores exited 0 even when the pipeline ended in error.
     let expected_success = expect.status == "success";
     let actual_success = observed.exit_code == 0
-        && observed.summary_status.as_deref().is_none_or(|s| s == "success");
-    if expected_success != actual_success {
+        && observed.status.as_deref().is_none_or(|s| s == "success");
+    let status_failed = expected_success != actual_success;
+    if status_failed {
         failures.push(format!(
             "status: expected '{}', got exit code {} (summary status: {})",
             expect.status,
             observed.exit_code,
-            observed.summary_status.as_deref().unwrap_or("none")
+            observed.status.as_deref().unwrap_or("none")
+        ));
+    }
+
+    let exit_code_failed = expect.exit_code.is_some_and(|want| want != observed.exit_code);
+    if let Some(want) = expect.exit_code.filter(|_| exit_code_failed) {
+        failures.push(format!("exit_code: expected {want}, got {}", observed.exit_code));
+    }
+
+    // Why the run failed, when it wasn't supposed to (or failed differently).
+    if status_failed || exit_code_failed {
+        if let Some(cause) = observed.cause.as_deref().filter(|_| !actual_success) {
+            failures.push(format!("cause: {cause}"));
+        }
+    }
+
+    if let Some(doc_code) = observed.summary_exit_code.filter(|c| *c != observed.exit_code) {
+        failures.push(format!(
+            "run summary: exit_code {doc_code} disagrees with the container's exit code {}",
+            observed.exit_code
         ));
     }
 
@@ -338,29 +380,6 @@ fn count_lines(path: &Path) -> Result<u64> {
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
     Ok(reader.lines().count() as u64)
-}
-
-/// The summary box's `Status:` line (e.g. `Status:       error`), lower-cased.
-fn parse_summary_status(stdout: &str) -> Option<String> {
-    stdout.lines().find_map(|l| {
-        let (_, value) = l.split_once("Status:")?;
-        value.split_whitespace().next().map(str::to_ascii_lowercase)
-    })
-}
-
-fn parse_rows_from_stdout(stdout: &str) -> (Option<u64>, Option<u64>) {
-    (parse_metric(stdout, "rows read"), parse_metric(stdout, "rows written"))
-}
-
-fn parse_metric(s: &str, label: &str) -> Option<u64> {
-    // Matches the loadsmith summary box lines like "Rows read:    100,000"
-    // case-insensitively, then extracts the comma-formatted number.
-    s.lines()
-        .find(|l| l.to_ascii_lowercase().contains(label))
-        .and_then(|l| l.split_whitespace().find(|w| {
-            !w.is_empty() && w.chars().all(|c| c.is_ascii_digit() || c == ',')
-        }))
-        .and_then(|w| w.replace(',', "").parse().ok())
 }
 
 /// Waits until postgres accepts queries, going beyond just TCP-open.
@@ -479,54 +498,135 @@ async fn wait_oracle(host: &str, port: u16, or: &OracleReadiness, timeout: Durat
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::summary::parse_summary;
 
     const SUMMARY_ERROR: &str = "\
 Pipeline:     p
 Status:       error
 Rows read:    0
 Rows written: 0
+Cause:        source error: connection refused
 ";
 
     fn expect(status: &str, rows: Option<u64>) -> Expect {
-        Expect { status: status.into(), rows_read: rows, rows_written: rows, output: None }
+        Expect { status: status.into(), exit_code: None, rows_read: rows, rows_written: rows, output: None }
     }
 
-    fn observed(stdout: &str, exit_code: i64) -> Observed {
-        let (rows_read, rows_written) = parse_rows_from_stdout(stdout);
-        Observed { exit_code, summary_status: parse_summary_status(stdout), rows_read, rows_written }
+    fn text(stdout: &str, exit_code: i64) -> Observed {
+        Observed::from_text(exit_code, stdout)
     }
 
-    #[test]
-    fn summary_status_is_parsed() {
-        assert_eq!(parse_summary_status(SUMMARY_ERROR).as_deref(), Some("error"));
-        assert_eq!(parse_summary_status("no summary here"), None);
+    fn json(exit_code: i64, status: &str, rows: u64, cause: Option<&str>) -> Observed {
+        let doc = serde_json::json!({
+            "version": 1, "loadsmith_version": "0.3.0", "pipeline": "p",
+            "status": status, "exit_code": exit_code, "cause": cause,
+            "signal": null, "dry_run": false,
+            "route": [{"kind": "source", "type": "postgres", "name": null, "version": "0.2.1", "path": null}],
+            "rows_read": rows, "rows_written": rows, "batches": 1, "duration_ms": 1,
+            "throughput_rows_per_sec": 0, "started_at": "x", "finished_at": "y",
+            "state": null, "sink": null,
+        });
+        Observed::from_summary(exit_code, parse_summary(&doc.to_string()).unwrap(), "")
     }
+
+    // ── text fallback (engines without --summary-file) ─────────────────────
 
     #[test]
     fn error_summary_fails_even_with_exit_zero() {
         // Older cores printed `Status: error` but exited 0.
-        let f = validate_expects(&expect("success", None), &observed(SUMMARY_ERROR, 0), Path::new("/x"));
-        assert_eq!(f.len(), 1, "{f:?}");
+        let f = validate_expects(&expect("success", None), &text(SUMMARY_ERROR, 0), Path::new("/x"));
+        assert_eq!(f.len(), 2, "{f:?}");
         assert!(f[0].contains("summary status: error"), "{f:?}");
+    }
+
+    #[test]
+    fn text_failure_shows_cause() {
+        let f = validate_expects(&expect("success", None), &text(SUMMARY_ERROR, 1), Path::new("/x"));
+        assert_eq!(f.last().map(String::as_str), Some("cause: source error: connection refused"), "{f:?}");
     }
 
     #[test]
     fn row_counts_are_enforced() {
         let stdout = "Status:       success\nRows read:    3\nRows written: 4\n";
-        let f = validate_expects(&expect("success", Some(4)), &observed(stdout, 0), Path::new("/x"));
+        let f = validate_expects(&expect("success", Some(4)), &text(stdout, 0), Path::new("/x"));
         assert_eq!(f, vec!["rows_read: expected 4, got 3".to_string()]);
     }
 
     #[test]
     fn matching_run_passes() {
         let stdout = "Status:       success\nRows read:    100,000\nRows written: 100,000\n";
-        let f = validate_expects(&expect("success", Some(100_000)), &observed(stdout, 0), Path::new("/x"));
+        let f = validate_expects(&expect("success", Some(100_000)), &text(stdout, 0), Path::new("/x"));
         assert!(f.is_empty(), "{f:?}");
     }
 
     #[test]
     fn expected_error_passes_on_failure() {
-        let f = validate_expects(&expect("error", None), &observed(SUMMARY_ERROR, 1), Path::new("/x"));
+        let f = validate_expects(&expect("error", None), &text(SUMMARY_ERROR, 1), Path::new("/x"));
         assert!(f.is_empty(), "{f:?}");
+    }
+
+    // ── JSON run summary ───────────────────────────────────────────────────
+
+    #[test]
+    fn json_matching_run_passes() {
+        let f = validate_expects(&expect("success", Some(10)), &json(0, "success", 10, None), Path::new("/x"));
+        assert!(f.is_empty(), "{f:?}");
+    }
+
+    #[test]
+    fn json_failure_shows_cause() {
+        let o = json(4, "error", 0, Some("plugin not found: loadsmith-source-pg"));
+        let f = validate_expects(&expect("success", None), &o, Path::new("/x"));
+        assert_eq!(
+            f,
+            vec![
+                "status: expected 'success', got exit code 4 (summary status: error)".to_string(),
+                "cause: plugin not found: loadsmith-source-pg".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn json_row_counts_are_enforced() {
+        let f = validate_expects(&expect("success", Some(11)), &json(0, "success", 10, None), Path::new("/x"));
+        assert_eq!(f, vec!["rows_read: expected 11, got 10".to_string(), "rows_written: expected 11, got 10".to_string()]);
+    }
+
+    #[test]
+    fn json_error_status_with_exit_zero_fails() {
+        let f = validate_expects(&expect("success", None), &json(0, "error", 0, None), Path::new("/x"));
+        assert_eq!(f.len(), 1, "{f:?}");
+    }
+
+    #[test]
+    fn exit_code_expectation() {
+        let mut e = expect("error", None);
+        e.exit_code = Some(3);
+        let ok = json(3, "error", 0, Some("config error: unknown key"));
+        assert!(validate_expects(&e, &ok, Path::new("/x")).is_empty());
+
+        let wrong = json(1, "error", 0, Some("source error: boom"));
+        assert_eq!(
+            validate_expects(&e, &wrong, Path::new("/x")),
+            vec!["exit_code: expected 3, got 1".to_string(), "cause: source error: boom".to_string()]
+        );
+        // Works on the text path too: the container's exit code is always known.
+        assert_eq!(validate_expects(&e, &text(SUMMARY_ERROR, 1), Path::new("/x")).len(), 2);
+    }
+
+    #[test]
+    fn summary_exit_code_must_match_container() {
+        let mut o = json(0, "success", 1, None);
+        o.exit_code = 1;
+        let f = validate_expects(&expect("error", None), &o, Path::new("/x"));
+        assert!(f.iter().any(|l| l.contains("disagrees")), "{f:?}");
+    }
+
+    #[test]
+    fn unsupported_summary_version_fails() {
+        let mut o = json(0, "success", 1, None);
+        o.unsupported_version = Some(2);
+        let f = validate_expects(&expect("success", None), &o, Path::new("/x"));
+        assert!(f[0].contains("version 2 is not supported"), "{f:?}");
     }
 }

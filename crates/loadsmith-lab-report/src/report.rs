@@ -11,6 +11,9 @@ pub struct CaseResult {
     pub duration: Duration,
     pub rows_read: Option<u64>,
     pub rows_written: Option<u64>,
+    /// The run's route with plugin versions (`postgres 0.2.1 → jsonl 0.2.1`),
+    /// from the engine's JSON run summary; `None` when unknown.
+    pub route: Option<String>,
     /// Setup steps (image builds, service readiness) shown before the run.
     pub prep_lines: Vec<String>,
     /// loadsmith's own stdout report, shown framed under the case.
@@ -67,6 +70,10 @@ pub fn print_result(result: &CaseResult) {
         for line in trimmed.lines() {
             println!("  {gutter} {line}");
         }
+    }
+
+    if let Some(route) = &result.route {
+        println!("  {} {}", "·".dimmed(), format!("plugins: {route}").dimmed());
     }
 
     let dur = format!("{:.1}s", result.duration.as_secs_f64());

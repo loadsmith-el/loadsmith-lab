@@ -110,6 +110,10 @@ pub struct PipelineDef {
 #[derive(Debug, Deserialize)]
 pub struct Expect {
     pub status: String,
+    /// The exact process exit code (engine exit-code table: 0/1/2/3/4/5/130/143),
+    /// to tell failure classes apart — e.g. `3` for a configuration error.
+    #[serde(default)]
+    pub exit_code: Option<i64>,
     pub rows_read: Option<u64>,
     pub rows_written: Option<u64>,
     pub output: Option<OutputExpect>,
