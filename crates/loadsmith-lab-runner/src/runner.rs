@@ -231,6 +231,9 @@ async fn run_container(
         // its own committed fixtures (e.g. a wallet) portably; an absolute path
         // is used as-is (Path::join returns the absolute arg unchanged).
         let host = case_dir.join(&vol.host);
+        // Docker treats a non-absolute bind source as a named volume, so a
+        // relative `--cases-dir` must not leak through: make it absolute.
+        let host = std::path::absolute(&host).unwrap_or(host);
         binds.push(format!("{}:{}", host.display(), vol.container));
     }
 
