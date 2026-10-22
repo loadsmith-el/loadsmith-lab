@@ -101,6 +101,7 @@ The `services:` key is required; use `services: []` for a case with none.
 | `readiness.oracle` | object | no | Additional Oracle-level readiness probe |
 | `env` | list of strings | no | Environment variables passed to the container (`"KEY=VALUE"`) |
 | `docker_args` | list of strings | no | Despite the name, each entry is used as a bind-mount spec (`host:container[:opts]`), not a docker run flag |
+| `output_mount` | string | no | Container path where the run's output directory's `<alias>/` subdirectory is mounted; the service then runs as the host user. For a service whose stored data the case checks — e.g. an S3 simulator that keeps objects as plain files, which `expect.output` and bundle hooks then see under `<alias>/` |
 
 ### `readiness.postgres`
 
@@ -186,6 +187,31 @@ directory is always mounted at `/output` automatically, so `volumes` is only for
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `file` | string | yes | Path to the pipeline YAML, relative to the case directory |
+
+### `runs`
+
+Optional. Earlier runs of the same pipeline, on the same services, before the
+final run that `expect` checks — for incremental loads that must add only the
+new rows on the next run. The output directory (and a `state:` file kept under
+`/output`) carries over between runs. Each entry has its own `expect` (same
+fields as below) and optional `after` SQL, run once that run is done:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `expect` | object | yes | Assertions for this run; a failure is reported as `run N: …` |
+| `after[].service` | string | yes | The `alias` of a service with a `postgres`, `mysql` or `oracle` readiness block (its credentials are used) |
+| `after[].sql` | string | yes | SQL to run: one statement for Oracle; Postgres and MySQL accept several |
+
+```yaml
+runs:
+  - expect: { status: success, rows_read: 100000 }
+    after:
+      - service: pg
+        sql: "INSERT INTO events SELECT ... -- the rows the next run must pick up"
+expect:                  # the final run
+  status: success
+  rows_read: 10
+```
 
 ### `expect`
 

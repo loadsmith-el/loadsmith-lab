@@ -53,6 +53,7 @@ services:                # required — may be an empty list (services: [])
     docker_args:         # optional — despite the name, each entry is used as a
       - string           #   bind-mount spec (host:container[:opts]), not a
                          #   docker run flag
+    output_mount: string # optional — mount <output>/<alias>/ here, run as the host user
 
 # ─── Loadsmith invocation ─────────────────────────────────────────────────────
 loadsmith:               # optional block (whole thing) — omit unless overriding
@@ -75,6 +76,13 @@ loadsmith:               # optional block (whole thing) — omit unless overridi
 # ─── Pipeline ─────────────────────────────────────────────────────────────────
 pipeline:
   file: string           # required — path to pipeline.yaml, relative to the case directory
+
+# ─── Earlier runs (optional) ──────────────────────────────────────────────────
+runs:                    # optional — runs before the final one, same services and /output
+  - expect: {...}        #   required — this run's assertions (fields as below)
+    after:               #   optional — SQL once this run is done
+      - service: string  #     a service alias with postgres/mysql/oracle readiness
+        sql: string      #     one statement for Oracle; several for Postgres/MySQL
 
 # ─── Assertions ───────────────────────────────────────────────────────────────
 expect:

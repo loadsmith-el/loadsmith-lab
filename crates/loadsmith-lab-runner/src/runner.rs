@@ -84,7 +84,7 @@ pub async fn run_case(case_path: &Path, opts: &RunOpts) -> Result<CaseResult> {
     }
     let _ = docker.remove_network(&net_name).await;
 
-    let (observed, captured) = match inner {
+    let (observed, captured, earlier_failures) = match inner {
         Ok(v) => v,
         Err(e) => {
             // On success the caller drops it after validation (bundle hooks
@@ -95,7 +95,8 @@ pub async fn run_case(case_path: &Path, opts: &RunOpts) -> Result<CaseResult> {
     };
 
     let duration = start.elapsed();
-    let mut failures = validate_expects(&case.expect, &observed, &output_dir);
+    let mut failures = earlier_failures;
+    failures.extend(validate_expects(&case.expect, &observed, &output_dir));
     if let Some(logs) = &case.expect.logs {
         failures.extend(check_logs(logs, &captured));
     }
@@ -130,7 +131,9 @@ async fn run_case_inner(
     net_name: &str,
     output_dir: &Path,
     svc_ids: &mut Vec<String>,
-) -> Result<(Observed, Captured)> {
+) -> Result<(Observed, Captured, Vec<String>)> {
+    // alias → bridge IP, for the SQL of multi-run cases.
+    let mut svc_hosts: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for svc in &case.services {
         // The case references its service image as an origin item
         // (`<origin>/<name>`); resolve the build context and derive the local
@@ -149,6 +152,15 @@ async fn run_case_inner(
             ));
         }
 
+        let mut binds = svc.docker_args.clone();
+        let mut user = None;
+        if let Some(mount) = &svc.output_mount {
+            let dir = output_dir.join(&svc.alias);
+            std::fs::create_dir_all(&dir)?;
+            binds.push(format!("{}:{mount}", dir.display()));
+            // Its files must not be root-owned, or the output dir can't be removed.
+            user = crate::image::host_user();
+        }
         let id = docker.run_container(ContainerConfig {
             image: tag.clone(),
             hostname: Some(svc.alias.clone()),
@@ -157,14 +169,17 @@ async fn run_case_inner(
                 let mut parts = e.splitn(2, '=');
                 (parts.next().unwrap_or("").to_string(), parts.next().unwrap_or("").to_string())
             }).collect(),
-            binds: svc.docker_args.clone(),
+            binds,
             publish_ports: vec![],
             cmd: vec![],
             docker_args: vec![],
-            user: None,
+            user,
         }).await?;
 
         svc_ids.push(id.clone());
+        if !case.runs.is_empty() {
+            svc_hosts.insert(svc.alias.clone(), docker.container_ip(&id, net_name).await?);
+        }
 
         if let Some(r) = &svc.readiness {
             // loadsmith and the services share the Docker network, but the lab
@@ -192,7 +207,64 @@ async fn run_case_inner(
         }
     }
 
-    run_container(docker, case, opts, case_dir, net_name, output_dir).await
+    // Earlier runs of a multi-run case: each checked on its own, then its SQL.
+    let total = case.runs.len() + 1;
+    let mut earlier_failures = Vec::new();
+    for (i, step) in case.runs.iter().enumerate() {
+        print_prep_line(&format!("run {}/{total}", i + 1));
+        let (observed, captured) = run_container(docker, case, opts, case_dir, net_name, output_dir).await?;
+        let mut failures = validate_expects(&step.expect, &observed, output_dir);
+        if let Some(logs) = &step.expect.logs {
+            failures.extend(check_logs(logs, &captured));
+        }
+        earlier_failures.extend(failures.into_iter().map(|f| format!("run {}: {f}", i + 1)));
+        for sql in &step.after {
+            let svc = case
+                .services
+                .iter()
+                .find(|s| s.alias == sql.service)
+                .ok_or_else(|| anyhow::anyhow!("runs[{i}].after: no service with alias `{}`", sql.service))?;
+            let host = &svc_hosts[&svc.alias];
+            run_sql(host, svc, &sql.sql).await.map_err(|e| anyhow::anyhow!("runs[{i}].after on `{}`: {e}", svc.alias))?;
+            print_prep_line(&format!("ran SQL on {}", svc.alias));
+        }
+    }
+    if total > 1 {
+        print_prep_line(&format!("run {total}/{total}"));
+    }
+    let (observed, captured) = run_container(docker, case, opts, case_dir, net_name, output_dir).await?;
+    Ok((observed, captured, earlier_failures))
+}
+
+/// Runs `sql` on a service with the credentials of its readiness block.
+async fn run_sql(host: &str, svc: &crate::case::ServiceDef, sql: &str) -> Result<()> {
+    let r = svc.readiness.as_ref().ok_or_else(|| anyhow::anyhow!("the service has no readiness block (credentials)"))?;
+    if let Some(pg) = &r.postgres {
+        let conn = format!("host={host} port={} dbname={} user={} password={}", r.tcp, pg.dbname, pg.user, pg.password);
+        let (client, task) = tokio_postgres::connect(&conn, tokio_postgres::NoTls).await?;
+        tokio::spawn(task);
+        client.batch_execute(sql).await?;
+    } else if let Some(my) = &r.mysql {
+        use mysql_async::prelude::Queryable;
+        let opts = mysql_async::OptsBuilder::default()
+            .ip_or_hostname(host.to_string())
+            .tcp_port(r.tcp)
+            .user(Some(my.user.clone()))
+            .pass(Some(my.password.clone()))
+            .db_name(Some(my.dbname.clone()));
+        let mut conn = mysql_async::Conn::new(opts).await?;
+        conn.query_drop(sql).await?;
+        let _ = conn.disconnect().await;
+    } else if let Some(or) = &r.oracle {
+        let config = oracle_rs::Config::new(host, r.tcp, &or.service_name, &or.user, &or.password);
+        let conn = oracle_rs::Connection::connect_with_config(config).await?;
+        conn.execute_dml_sql(sql, &[]).await?;
+        conn.commit().await?;
+        let _ = conn.close().await;
+    } else {
+        anyhow::bail!("the service's readiness block has no postgres/mysql/oracle credentials");
+    }
+    Ok(())
 }
 
 /// Runs loadsmith in a container on the case network and returns what it

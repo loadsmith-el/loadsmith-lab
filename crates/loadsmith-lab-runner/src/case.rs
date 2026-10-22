@@ -7,7 +7,34 @@ pub struct Case {
     #[serde(default)]
     pub loadsmith: LoadsmithDef,
     pub pipeline: PipelineDef,
+    /// Earlier runs of the same pipeline on the same services (the output
+    /// directory, and so a `state:` kept under `/output`, carries over), each
+    /// checked against its own `expect`, then SQL run before the next one.
+    /// The case's own `expect` checks the final run.
+    #[serde(default)]
+    pub runs: Vec<RunStep>,
     pub expect: Expect,
+}
+
+/// One earlier run of a multi-run case.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RunStep {
+    pub expect: Expect,
+    /// SQL to run after this run (e.g. new rows for an incremental next run).
+    #[serde(default)]
+    pub after: Vec<SqlStep>,
+}
+
+/// A SQL statement run against a service, with its readiness credentials.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SqlStep {
+    /// The service's `alias`; it needs a `postgres`, `mysql` or `oracle`
+    /// readiness block (the credentials).
+    pub service: String,
+    /// One statement for Oracle; Postgres and MySQL accept several.
+    pub sql: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -27,6 +54,12 @@ pub struct ServiceDef {
     pub env: Vec<String>,
     #[serde(default)]
     pub docker_args: Vec<String>,
+    /// Mounts the run's output directory's `<alias>/` subdirectory at this
+    /// container path, and runs the service as the host user — for a service
+    /// whose stored data the case checks (e.g. an S3 simulator keeping objects
+    /// as plain files: they land under `<output>/<alias>/`).
+    #[serde(default)]
+    pub output_mount: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
