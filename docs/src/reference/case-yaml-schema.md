@@ -9,7 +9,7 @@ case:
                          #   list use <origin>/<directory-name> instead (keep the
                          #   two equal by convention)
   description: string    # optional — shown in the case header during a run
-  tags:                  # optional — reserved for future filtering
+  tags:                  # optional — `requires-local-plugin` skips the case without --plugin
     - string
 
 # ─── Services ─────────────────────────────────────────────────────────────────

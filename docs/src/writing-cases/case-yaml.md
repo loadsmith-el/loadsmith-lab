@@ -82,7 +82,7 @@ Metadata about the case.
 |---|---|---|---|
 | `name` | string | yes | Display name in the result line. `--select` and `loadsmith-lab list` use `<origin>/<directory name>` instead, so keep it equal to the directory name by convention |
 | `description` | string | no | Shown in the case header when running |
-| `tags` | list of strings | no | Arbitrary tags. Unused — reserved for future filtering |
+| `tags` | list of strings | no | Arbitrary tags. One has a meaning: `requires-local-plugin` marks a case that needs an unreleased plugin (e.g. a fault-injection build); `run` skips it unless `--plugin` is given |
 
 ### `services`
 

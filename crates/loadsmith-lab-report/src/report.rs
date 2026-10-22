@@ -99,12 +99,20 @@ pub fn print_result(result: &CaseResult) {
     }
 }
 
-pub fn print_summary(results: &[CaseResult]) {
+/// Prints a case that was not run, with the reason.
+pub fn print_skipped(name: &str, reason: &str) {
+    println!("  {} {}   {}", "-".yellow().bold(), name.yellow(), reason.dimmed());
+}
+
+pub fn print_summary(results: &[CaseResult], skipped: usize) {
     let passed = results.iter().filter(|r| r.passed).count();
     let failed = results.len() - passed;
     println!();
     println!("{}", "─".repeat(50).dimmed());
-    let summary = format!("{passed} passed, {failed} failed");
+    let mut summary = format!("{passed} passed, {failed} failed");
+    if skipped > 0 {
+        summary.push_str(&format!(", {skipped} skipped"));
+    }
     if failed > 0 {
         println!("{}", summary.red().bold());
     } else {

@@ -4,7 +4,8 @@ use std::process::ExitCode;
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use loadsmith_lab_report::{
-    print_banner, print_bundle_summary, print_case_header, print_result, print_summary,
+    print_banner, print_bundle_summary, print_case_header, print_result, print_skipped,
+    print_summary,
 };
 use loadsmith_lab_runner::origin::{self, Config};
 use loadsmith_lab_runner::{
@@ -348,9 +349,18 @@ async fn cmd_run(args: RunArgs, cfg: &Config, color: bool, log_level: String) ->
     prune_stale_resources().await;
 
     let mut results = vec![];
+    let mut skipped = 0;
     for (name, case_path) in &cases {
         let description = peek_description(case_path);
         print_case_header(name, description.as_deref());
+        // A case that needs an unreleased plugin (e.g. a fault-injection build)
+        // can only pass against local plugins.
+        let needs_local = peek_tags(case_path).iter().any(|t| t == REQUIRES_LOCAL_PLUGIN);
+        if needs_local && args.plugins.is_empty() {
+            print_skipped(name, &format!("tagged `{REQUIRES_LOCAL_PLUGIN}`; run with --plugin"));
+            skipped += 1;
+            continue;
+        }
         match run_case(case_path, &opts).await {
             Ok(r) => {
                 print_result(&r);
@@ -372,7 +382,7 @@ async fn cmd_run(args: RunArgs, cfg: &Config, color: bool, log_level: String) ->
         }
     }
 
-    print_summary(&results);
+    print_summary(&results, skipped);
     remove_temp_dirs();
     Ok(results.iter().all(|r| r.passed))
 }
@@ -451,6 +461,26 @@ fn cmd_bundle_list(args: BundleListArgs, cfg: &Config) -> Result<bool> {
         }
     }
     Ok(true)
+}
+
+/// Case tag for cases that need a plugin not in any release (run them with
+/// `--plugin`); skipped otherwise.
+const REQUIRES_LOCAL_PLUGIN: &str = "requires-local-plugin";
+
+/// Cheaply reads just the case tags, before the run.
+fn peek_tags(case_path: &Path) -> Vec<String> {
+    let Some(value) = std::fs::read_to_string(case_path)
+        .ok()
+        .and_then(|c| serde_yaml::from_str::<serde_yaml::Value>(&c).ok())
+    else {
+        return vec![];
+    };
+    value
+        .get("case")
+        .and_then(|c| c.get("tags"))
+        .and_then(|t| t.as_sequence())
+        .map(|seq| seq.iter().filter_map(|t| t.as_str().map(String::from)).collect())
+        .unwrap_or_default()
 }
 
 /// Cheaply reads just the case description for the header, before the run.
