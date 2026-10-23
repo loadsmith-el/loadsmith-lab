@@ -80,6 +80,8 @@ pipeline:
 # ─── Earlier runs (optional) ──────────────────────────────────────────────────
 runs:                    # optional — runs before the final one, same services and /output
   - expect: {...}        #   required — this run's assertions (fields as below)
+    env:                 #   optional — extra loadsmith env for this run only,
+      - "KEY=VALUE"      #     on top of loadsmith.env (e.g. a fault switch)
     after:               #   optional — SQL once this run is done
       - service: string  #     a service alias with postgres/mysql/oracle readiness
         sql: string      #     one statement for Oracle; several for Postgres/MySQL

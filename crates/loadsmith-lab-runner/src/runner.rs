@@ -212,7 +212,7 @@ async fn run_case_inner(
     let mut earlier_failures = Vec::new();
     for (i, step) in case.runs.iter().enumerate() {
         print_prep_line(&format!("run {}/{total}", i + 1));
-        let (observed, captured) = run_container(docker, case, opts, case_dir, net_name, output_dir).await?;
+        let (observed, captured) = run_container(docker, case, opts, case_dir, net_name, output_dir, &step.env).await?;
         let mut failures = validate_expects(&step.expect, &observed, output_dir);
         if let Some(logs) = &step.expect.logs {
             failures.extend(check_logs(logs, &captured));
@@ -232,7 +232,7 @@ async fn run_case_inner(
     if total > 1 {
         print_prep_line(&format!("run {total}/{total}"));
     }
-    let (observed, captured) = run_container(docker, case, opts, case_dir, net_name, output_dir).await?;
+    let (observed, captured) = run_container(docker, case, opts, case_dir, net_name, output_dir, &[]).await?;
     Ok((observed, captured, earlier_failures))
 }
 
@@ -271,7 +271,8 @@ async fn run_sql(host: &str, svc: &crate::case::ServiceDef, sql: &str) -> Result
 /// reported. Logs are streamed to the gutter in real time; the outcome comes
 /// from the JSON run summary (`--summary-file`) when the engine supports it,
 /// else from the human report in those logs. The captured output is returned
-/// alongside, for `expect.logs`.
+/// alongside, for `expect.logs`. `run_env` is a multi-run step's own
+/// environment, added to the case's `loadsmith.env`.
 async fn run_container(
     docker: &DockerClient,
     case: &Case,
@@ -279,6 +280,7 @@ async fn run_container(
     case_dir: &Path,
     net_name: &str,
     output_dir: &Path,
+    run_env: &[String],
 ) -> Result<(Observed, Captured)> {
     // Build/wrap a local core (--loadsmith) or pull the canonical published image.
     let image = resolve_loadsmith_image(docker, opts, case).await?;
@@ -309,7 +311,7 @@ async fn run_container(
         binds.push(format!("{}:{}", host.display(), vol.container));
     }
 
-    let mut env: Vec<(String, String)> = case.loadsmith.env.iter().map(|e| {
+    let mut env: Vec<(String, String)> = case.loadsmith.env.iter().chain(run_env).map(|e| {
         let mut parts = e.splitn(2, '=');
         (parts.next().unwrap_or("").to_string(), parts.next().unwrap_or("").to_string())
     }).collect();

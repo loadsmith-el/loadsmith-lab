@@ -21,6 +21,10 @@ pub struct Case {
 #[serde(deny_unknown_fields)]
 pub struct RunStep {
     pub expect: Expect,
+    /// Extra `KEY=value` environment for this run's loadsmith container only,
+    /// on top of `loadsmith.env` (e.g. a fault switch for one run).
+    #[serde(default)]
+    pub env: Vec<String>,
     /// SQL to run after this run (e.g. new rows for an incremental next run).
     #[serde(default)]
     pub after: Vec<SqlStep>,
